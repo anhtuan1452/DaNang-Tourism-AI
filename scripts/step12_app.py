@@ -329,14 +329,29 @@ elif mode == "5. AI Pipeline & Source Code":
                 with st.expander(f"🐍 {step_name}"):
                     st.code(f"python scripts/{f}", language="bash")
                     
-                    # Read first docstring or few lines optionally to show preview
+                    # Read full source code
                     file_path = os.path.join(script_dir, f)
                     try:
                         with open(file_path, 'r', encoding='utf-8') as file:
-                            head = "".join([next(file) for _ in range(15)])
-                            st.code(head, language="python")
-                    except:
-                        st.write("Source code preview unavailable.")
+                            full_code = file.read()
+                            
+                        c1, c2 = st.columns([0.8, 0.2])
+                        with c1:
+                            st.markdown(f"**Source Code Preview ({len(full_code.splitlines())} lines):**")
+                        with c2:
+                            st.download_button(
+                                label="⬇️ Download .py",
+                                data=full_code,
+                                file_name=f,
+                                mime="text/x-python",
+                                use_container_width=True
+                            )
+                            
+                        # Show the actual code block fully
+                        st.code(full_code, language="python")
+                        
+                    except Exception as e:
+                        st.write(f"Source code preview unavailable. Error: {e}")
         else:
             st.warning("No script files found.")
 
