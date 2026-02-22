@@ -1,0 +1,33 @@
+--- Locations with Multiple IDs ---
+Name: The Motorbike Station -> IDs: ['d12598185' 'd17820192']
+
+--- Checking 'Dacotour' or similar (case-insensitive) ---
+      locationId                                                  hotelName
+6349    d6974493                                                  Dacotours
+31422   d6974493  DacotoursCó người từ doanh nghiệp này đang quản lý hồ sơ.
+
+--- Review Count per location ID (Top 10) ---
+locationId
+d2255351     4009
+d17739218    1360
+d6974493     1218
+d5531576     1190
+d27098170    1036
+d6583086     1021
+d6612108      980
+d18114312     972
+d454980       930
+d11876159     770
+
+--- Review Count per location Name (Top 10) ---
+hotelName
+Ba Na Hills SunWorld       4009
+Charm Spa Grand Da Nang    1360
+Lady Buddha                1190
+Dacotours                  1118
+The Motorbike Station      1104
+Danang Villa De Spa        1035
+Dragon Bridge               980
+Oani Spa                    972
+Xuan Tu Tours               961
+The Marble Mountains        930

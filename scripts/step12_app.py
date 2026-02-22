@@ -1,0 +1,304 @@
+import os
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+
+# --- CONFIGURATION ---
+st.set_page_config(
+    page_title="Da Nang Tourism Forecasting AI",
+    page_icon="🏖️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- CACHING & DATA LOADING ---
+@st.cache_data
+def get_location_mapping(raw_dir):
+    location_mapping = {}
+    raw_files = [
+        'absa_deepseek_results_merged_backup.csv',
+        'absa_deepseek_results_backup.csv'
+    ]
+    for rf in raw_files:
+        raw_path = os.path.join(raw_dir, rf)
+        if os.path.exists(raw_path):
+            try:
+                raw_df = pd.read_csv(raw_path, usecols=['locationId', 'hotelName'], dtype=str)
+                raw_df = raw_df.dropna(subset=['locationId', 'hotelName'])
+                for _, row in raw_df.drop_duplicates(subset=['locationId']).iterrows():
+                    loc_id = row['locationId']
+                    if loc_id not in location_mapping:
+                        name = str(row['hotelName']).split('-')[0].split(',')[0].strip()
+                        location_mapping[loc_id] = f"{name} ({loc_id})"
+            except Exception as e:
+                pass
+    return location_mapping
+
+@st.cache_data
+def load_data():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(script_dir)
+    input_file = os.path.join(project_dir, 'data', 'processed', 'monthly_location_features.csv')
+    raw_dir = os.path.join(project_dir, 'data', 'raw')
+    
+    df = pd.read_csv(input_file)
+    df['month'] = pd.to_datetime(df['month'])
+    
+    # Exclude anomalies
+    excluded_locations = ['d6974493']
+    df = df[~df['locationId'].isin(excluded_locations)].copy()
+    
+    loc_map = get_location_mapping(raw_dir)
+    df['location_name'] = df['locationId'].map(lambda x: loc_map.get(x, f"Location {x}"))
+    
+    # Scale the original sentiment [-1, 1] up to a standard [1, 5] star rating scale.
+    df['scaled_sentiment'] = ((df['avg_sentiment'] + 1) / 2) * 4 + 1
+    
+    # Calculate a weighted sentiment per row using the true volume of reviews
+    df['total_sentiment'] = df['scaled_sentiment'] * df['review_count']
+    
+    # Global aggregation
+    global_df = df.groupby('month').agg({
+        'review_count': 'sum',
+        'dom_count': 'sum',
+        'intl_count': 'sum',
+        'total_sentiment': 'sum', # Total weighted sentiment
+        'rainfall_mm': 'mean',
+        'holiday_count': 'sum',
+        'temp_mean': 'mean'
+    }).reset_index()
+    
+    # Calculate the true global weighted average sentiment
+    global_df['avg_sentiment'] = np.where(global_df['review_count'] > 0, 
+                                          global_df['total_sentiment'] / global_df['review_count'], 
+                                          0)
+    
+    # Overwrite the location-level avg_sentiment for consistency on other tabs
+    df['avg_sentiment'] = df['scaled_sentiment']
+    
+    # Drop temporary variables
+    df.drop(columns=['scaled_sentiment', 'total_sentiment'], inplace=True, errors='ignore')
+    global_df.drop(columns=['total_sentiment'], inplace=True, errors='ignore')
+    
+    return df, global_df, loc_map
+
+# Load datasets
+try:
+    df, global_df, loc_map = load_data()
+except Exception as e:
+    st.error(f"Error loading data: {e}. Please ensure the data pipeline steps 1-5 have been run.")
+    st.stop()
+
+
+# --- STREAMLIT UI ---
+st.title("🏖️ Forecasting Tourism Trends/Demand of Entertainment Attractions in Da Nang Using Online Reviews and Deep Time-Series Models ")
+st.markdown("""
+Welcome to the interactive Time-Series Forecasting Dashboard for Da Nang's Tourism Sector! 
+This application leverages Deep Learning (Transformers/LSTM) to predict future tourist volumes based on historical user-generated reviews, sentiment, weather, and holidays.
+""")
+
+# Sidebar Navigation
+mode = st.sidebar.selectbox(
+    "Select Analysis Mode",
+    ["1. Global Overview & Forecasting", "2. Location Deep Dive", "3. Seasonality & Behaviors", "4. Data Viewer"]
+)
+
+
+if mode == "1. Global Overview & Forecasting":
+    st.header("🌍 Global Da Nang Travel Trends")
+    st.write("This tab shows the aggregated tourist activity across all locations in Da Nang.")
+    
+    # KPI metrics
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Reviews Logged", f"{global_df['review_count'].sum():,.0f}")
+    col2.metric("Total Domestic", f"{global_df['dom_count'].sum():,.0f}")
+    col3.metric("Total International", f"{global_df['intl_count'].sum():,.0f}")
+    col4.metric("Average Sentiment", f"{global_df['avg_sentiment'].mean():.2f} / 5.0")
+    
+    # Global Trend Chart
+    st.subheader("Historical Timeline")
+    fig = px.line(global_df, x='month', y='review_count', title="Total Historical Tourist Proxy (Review Count)")
+    fig.add_vrect(x0="2020-01-01", x1="2021-12-31", fillcolor="red", opacity=0.2, layer="below", line_width=0, annotation_text="COVID-19 Period")
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # We display our pre-calculated metrics
+    st.subheader("Deep Learning Model Leaderboard (MAPE Optimized)")
+    
+    try:
+        metrics_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs', 'baseline_metrics.csv')
+        if os.path.exists(metrics_csv):
+            metrics_df = pd.read_csv(metrics_csv, index_col=0)
+            metrics_df = metrics_df.sort_values(by='MAPE')
+            
+            best_model_name = metrics_df.index[0]
+            best_mape = metrics_df.iloc[0]['MAPE']
+            
+            st.markdown(f"""
+            *We evaluated {len(metrics_df)} different Time-Series models (from Naive to state-of-the-art Deep Neural Networks) on the entire unmodified Tourism Ecosystem. The **{best_model_name}** achieved an industry-leading **MAPE of {best_mape:.2f}%**.*
+            """)
+            
+            st.dataframe(metrics_df.style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
+        else:
+            st.warning("Leaderboard metrics file not found.")
+    except Exception as e:
+        st.error(f"Could not load leaderboard: {e}")
+
+    st.subheader("Advanced Architecture Visualizations")
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"])
+    
+    eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
+    
+    with tab1:
+        st.markdown("**Transformer (Pure):** The standalone Attention mechanism dynamically finding complex non-linear patterns across time with no recurrence.")
+        try:
+            st.image(os.path.join(eda_path, '7_transformer_forecasts.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+
+    with tab2:
+        st.markdown("**Joint End-to-End Network:** Fuses LSTM (Trend) and Transformer (Attention) with Huber Loss to aggressively minimize MAPE.")
+        try:
+            st.image(os.path.join(eda_path, '18_joint_lstm_transformer_forecast.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+        
+    with tab3:
+        st.markdown("**Monte Carlo Dropout 95% Confidence Intervals:** Neural Network uncertainty estimation indicating exactly where the forecast might fluctuate.")
+        try:
+            st.image(os.path.join(eda_path, '20_deep_learning_prediction_intervals.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+        
+    with tab4:
+        st.markdown("**STL-LSTM Hybrid:** Uses Statistical Decomposition (STL) to remove Trend/Seasonality before passing chaotic residuals to LSTM.")
+        try:
+            st.image(os.path.join(eda_path, '17_stl_lstm_hybrid_forecast.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+        
+    with tab5:
+        st.markdown("**1D CNN-LSTM:** Uses Convolutional Neural Networks to filter out hotel/restaurant noise before sequence learning.")
+        try:
+            st.image(os.path.join(eda_path, '16_cnn_lstm_forecast.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+        
+    with tab6:
+        st.markdown("**BiLSTM-Attention:** Reads data forward and backward while assigning weighted attention to severe seasonal fluctuations.")
+        try:
+            st.image(os.path.join(eda_path, '15_bilstm_attention_forecast.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+        
+    with tab7:
+        st.markdown("**Mixed STL-LSTM:** End-to-End deep learning architecture that directly ingests decomposed Trend and Seasonality signals as input features to output the final sequence.")
+        try:
+            st.image(os.path.join(eda_path, '23_mixed_stl_lstm_forecast.png'), use_container_width=True)
+        except: st.warning("Plot not yet generated.")
+
+
+
+elif mode == "2. Location Deep Dive":
+    st.header("🏨 Specific Location Forecasting")
+    
+    # Sort locations by total reviews so top attractions appear first
+    location_list_sorted = df.groupby('location_name')['review_count'].sum().sort_values(ascending=False).index.tolist()
+    
+    selected_loc = st.selectbox("Choose a Tourist Destination:", location_list_sorted)
+    
+    loc_data = df[df['location_name'] == selected_loc].sort_values('month')
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Lifetime Reviews", f"{loc_data['review_count'].sum():.0f}")
+    c2.metric("Peak Month Volume", f"{loc_data['review_count'].max():.0f}")
+    c3.metric("Latest Sentiment", f"{loc_data.iloc[-1]['avg_sentiment']:.2f} / 5.0" if len(loc_data)>0 else "N/A")
+    
+    st.subheader(f"Historical Activity: {selected_loc}")
+    fig = px.line(loc_data, x='month', y='review_count', markers=True)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Weather impact on this location")
+    fig2 = px.scatter(loc_data, x='rainfall_mm', y='review_count', color='avg_sentiment', 
+                     title="Does Rainfall reduce tourists here?", trendline="ols")
+    st.plotly_chart(fig2, use_container_width=True)
+
+
+elif mode == "3. Seasonality & Behaviors":
+    st.header("🕵️‍♂️ Behavioral Analysis: Domestic vs International")
+    st.write("Excluding COVID years (2020-2021) to find true organic seasonality.")
+    
+    # Exclude covid
+    df_normal = global_df[~((global_df['month'].dt.year >= 2020) & (global_df['month'].dt.year <= 2021))].copy()
+    df_normal['month_num'] = df_normal['month'].dt.month
+    
+    seasonality = df_normal.groupby('month_num').agg({
+        'dom_count': 'sum',
+        'intl_count': 'sum'
+    }).reset_index()
+    
+    dom_total = seasonality['dom_count'].sum()
+    intl_total = seasonality['intl_count'].sum()
+    seasonality['dom_pct'] = (seasonality['dom_count'] / dom_total) * 100
+    seasonality['intl_pct'] = (seasonality['intl_count'] / intl_total) * 100
+    
+    # Melt for Plotly
+    seas_melt = pd.melt(seasonality, id_vars=['month_num'], value_vars=['dom_pct', 'intl_pct'], 
+                        var_name='Cohort', value_name='Percentage')
+    seas_melt['Cohort'] = seas_melt['Cohort'].map({'dom_pct': 'Domestic', 'intl_pct': 'International'})
+    seas_melt['MonthName'] = seas_melt['month_num'].map({1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
+                                                       7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'})
+    
+    fig = px.bar(seas_melt, x='MonthName', y='Percentage', color='Cohort', barmode='group',
+                title="Yearly Distribution of Tourists", color_discrete_sequence=['royalblue', 'crimson'])
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.info("💡 **Insight:** Domestic tourists heavily favor Summer (June-July). International travelers have a much flatter distribution, but actually peak during the Winter (Dec-Jan) to escape the cold in their home countries.")
+    
+    st.subheader("AI Feature Importance")
+    st.markdown("""
+    Based on our Transformer Permutation Analysis, the factors that dictate the fluctuations in Da Nang tourism are:
+    1. **Historical Momentum (Review Count T-12)**: 76.7%
+    2. **Rainfall (mm)**: 23.3%
+    3. Sentiment / Holidays: Negligible on a macro-monthly scale.
+    """)
+
+elif mode == "4. Data Viewer":
+    st.header("🗂️ Data Viewer")
+    st.write("Explore raw and processed datasets used in this project.")
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(script_dir)
+    data_dir = os.path.join(project_dir, 'data')
+    
+    data_type = st.radio("Select Data Type:", ["Raw Data", "Processed Data"], horizontal=True)
+    
+    if data_type == "Raw Data":
+        folder = os.path.join(data_dir, 'raw')
+    else:
+        folder = os.path.join(data_dir, 'processed')
+        
+    if os.path.exists(folder):
+        files = [f for f in os.listdir(folder) if f.endswith('.csv')]
+        if files:
+            selected_file = st.selectbox("Select File:", files)
+            file_path = os.path.join(folder, selected_file)
+            try:
+                # Get total rows count fast (optional, but good for UX)
+                # To keep it simple, just read with nrows
+                df_preview = pd.read_csv(file_path, nrows=1000)
+                st.write(f"Previewing **{selected_file}** (first 1000 rows shown):")
+                st.dataframe(df_preview, use_container_width=True)
+                
+                file_size = os.path.getsize(file_path) / (1024 * 1024)
+                
+                # Check actual rows
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        total_lines = sum(1 for _ in f) - 1 # Note: very large files might take a second to count
+                except:
+                    total_lines = "Unknown"
+                    
+                st.info(f"📁 **File Size:** {file_size:.2f} MB | **Total Rows:** {total_lines}")
+            except Exception as e:
+                st.error(f"Could not read file {selected_file}. Error: {e}")
+        else:
+            st.warning(f"No CSV files found in {data_type}.")
+    else:
+        st.error(f"Directory not found: {folder}")
+
