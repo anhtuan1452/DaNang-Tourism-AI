@@ -15,7 +15,7 @@ st.set_page_config(
 
 # --- CACHING & DATA LOADING ---
 @st.cache_data
-def get_location_mapping(raw_dir):
+def get_location_names(raw_dir):
     location_mapping = {}
     raw_files = [
         'absa_deepseek_results_merged_backup.csv',
@@ -50,7 +50,7 @@ def load_data():
     excluded_locations = ['d6974493']
     df = df[~df['locationId'].isin(excluded_locations)].copy()
     
-    loc_map = get_location_mapping(raw_dir)
+    loc_map = get_location_names(raw_dir)
     df['location_name'] = df['locationId'].map(lambda x: loc_map.get(x, f"Location {x}"))
     
     # Scale the original sentiment [-1, 1] up to a standard [1, 5] star rating scale.
@@ -326,7 +326,7 @@ elif mode == "5. AI Pipeline & Source Code":
             for f in files:
                 # Format name nicely
                 step_name = f.replace('.py', '').replace('_', ' ').title()
-                with st.expander(f"🐍 {step_name}"):
+                with st.expander(f"- {step_name}"):
                     st.code(f"python scripts/{f}", language="bash")
                     
                     # Read full source code
