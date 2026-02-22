@@ -15,7 +15,7 @@ st.set_page_config(
 
 # --- CACHING & DATA LOADING ---
 @st.cache_data
-def get_location_names(raw_dir):
+def get_location_names_clean(raw_dir):
     location_mapping = {}
     raw_files = [
         'absa_deepseek_results_merged_backup.csv',
@@ -31,6 +31,8 @@ def get_location_names(raw_dir):
                     loc_id = row['locationId']
                     if loc_id not in location_mapping:
                         name = str(row['hotelName']).split('-')[0].split(',')[0].strip()
+                        name = name.replace("Someone from this business manages the listing.", "").strip()
+                        name = name.split("UnclaimedIf you own this business")[0].strip()
                         location_mapping[loc_id] = f"{name} ({loc_id})"
             except Exception as e:
                 pass
@@ -50,7 +52,7 @@ def load_data():
     excluded_locations = ['d6974493']
     df = df[~df['locationId'].isin(excluded_locations)].copy()
     
-    loc_map = get_location_names(raw_dir)
+    loc_map = get_location_names_clean(raw_dir)
     df['location_name'] = df['locationId'].map(lambda x: loc_map.get(x, f"Location {x}"))
     
     # Scale the original sentiment [-1, 1] up to a standard [1, 5] star rating scale.
