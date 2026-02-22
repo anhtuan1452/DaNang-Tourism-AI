@@ -102,7 +102,7 @@ This application leverages Deep Learning (Transformers/LSTM) to predict future t
 # Sidebar Navigation
 mode = st.sidebar.selectbox(
     "Select Analysis Mode",
-    ["1. Global Overview & Forecasting", "2. Location Deep Dive", "3. Seasonality & Behaviors", "4. Data Viewer"]
+    ["1. Global Overview & Forecasting", "2. Location Deep Dive", "3. Seasonality & Behaviors", "4. Data Viewer", "5. AI Pipeline & Source Code"]
 )
 
 
@@ -300,5 +300,43 @@ elif mode == "4. Data Viewer":
         else:
             st.warning(f"No CSV files found in {data_type}.")
     else:
-        st.error(f"Directory not found: {folder}")
+        st.error(f"Directory not found: {folder}. (Ensure data/raw is pushed to GitHub)")
+
+elif mode == "5. AI Pipeline & Source Code":
+    st.header("⚙️ Project Architecture & Pipeline Steps")
+    st.write("This project was built systematically through multiple Python scripts. Below is the chronological execution pipeline:")
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    if os.path.exists(script_dir):
+        # Scan and sort python step files
+        files = [f for f in os.listdir(script_dir) if f.startswith('step') and f.endswith('.py')]
+        
+        # Sort files based on their step number (e.g. step10 comes after step2)
+        def get_step_num(filename):
+            try:
+                num_part = filename.split('_')[0].replace('step', '')
+                return int(num_part)
+            except:
+                return 999
+                
+        files = sorted(files, key=get_step_num)
+        
+        if files:
+            for f in files:
+                # Format name nicely
+                step_name = f.replace('.py', '').replace('_', ' ').title()
+                with st.expander(f"🐍 {step_name}"):
+                    st.code(f"python scripts/{f}", language="bash")
+                    
+                    # Read first docstring or few lines optionally to show preview
+                    file_path = os.path.join(script_dir, f)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as file:
+                            head = "".join([next(file) for _ in range(15)])
+                            st.code(head, language="python")
+                    except:
+                        st.write("Source code preview unavailable.")
+        else:
+            st.warning("No script files found.")
 
