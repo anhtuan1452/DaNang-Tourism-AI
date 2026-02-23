@@ -30,6 +30,12 @@ st.markdown("""
             background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
             border-bottom: 1px solid rgba(30,136,229,0.12);
         }
+        /* Ensure the sidebar toggle button inside header stays visible */
+        [data-testid="stHeader"] button,
+        [data-testid="stSidebarCollapsedControl"] {
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
 
         /* ── Main background: soft sky-blue → white gradient ── */
         .stApp {
