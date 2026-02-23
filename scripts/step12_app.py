@@ -655,6 +655,8 @@ elif mode == "6. Future Forecasting (Interactive)":
                 
                 # Plot the Ensemble Future
                 hist_plot = global_df.copy()
+                # Exclude Feb 2026 — incomplete month (only ~75 reviews) causes a misleading dip
+                hist_plot = hist_plot[hist_plot['month'] < '2026-02-01']
                 fig = px.line(hist_plot[hist_plot['month'] >= '2024-01-01'], x='month', y='review_count', title=f"12-Month Strategic Blueprint — Next {horizon_ens} Months (Advanced Ensemble)")
                 fig.update_traces(line=dict(color='black', width=2), name='Historical (2024–2026)', showlegend=True)
                 
