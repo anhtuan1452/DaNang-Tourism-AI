@@ -268,52 +268,99 @@ if mode == "1. Global Overview & Forecasting":
     eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
     
     with tab0:
-        st.markdown("**Advanced Multi-Model Ensemble:** Fuses the predictions of a Super-Optimized Transformer and a Deep CNN-LSTM (60/40 Split) to achieve the highest predictive stability across the entire 2017-2026 dataset.")
-        try:
-            st.image(os.path.join(eda_path, '13b_super_ensemble_forecast.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
-        
+        st.markdown("**Advanced Multi-Model Ensemble:** Fuses the predictions of a Super-Optimized Transformer and a Deep CNN-LSTM (60/40 split) to achieve the highest predictive stability across the entire 2017-2026 dataset.")
+        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
+        if os.path.exists(test_pred_csv):
+            tp = pd.read_csv(test_pred_csv)
+            tp['month'] = pd.to_datetime(tp['month'])
+            # Historical backdrop (train period)
+            train_cut = global_df[global_df['month'] < tp['month'].min()]
+            fig_ens = px.line(train_cut, x='month', y='review_count',
+                              title='All-Time Tourism Forecast: Advanced Multi-Model Ensemble',
+                              labels={'review_count': 'Review Count'})
+            fig_ens.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Historical (Train)', showlegend=True)
+            fig_ens.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
+            fig_ens.add_scatter(x=tp['month'], y=tp['ensemble_pred'], mode='lines+markers', name='Ensemble Forecast', line=dict(color='red', width=2.5), marker=dict(size=8, symbol='star'))
+            fig_ens.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines', name='CNN-LSTM Only', line=dict(color='purple', dash='dot', width=1.5), opacity=0.7)
+            fig_ens.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines', name='Transformer Only', line=dict(color='green', dash='dash', width=1.5), opacity=0.7)
+            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['month'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            st.plotly_chart(fig_ens, use_container_width=True)
+        else:
+            st.info("Chưa có predictions CSV. Chạy `step13_advanced_ensemble.py` trước.")
+
     with tab1:
         st.markdown("**Transformer (Pure):** The standalone Attention mechanism dynamically finding complex non-linear patterns across time with no recurrence.")
-        try:
-            st.image(os.path.join(eda_path, '7_transformer_forecasts.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
+        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
+        if os.path.exists(test_pred_csv):
+            tp = pd.read_csv(test_pred_csv)
+            tp['month'] = pd.to_datetime(tp['month'])
+            train_cut = global_df[global_df['month'] < tp['month'].min()]
+            fig_tf = px.line(train_cut, x='month', y='review_count', title='Global Review Count Forecast: Actuals vs Transformer', labels={'review_count': 'Review Count'})
+            fig_tf.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Actuals (Global)', showlegend=True)
+            fig_tf.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
+            fig_tf.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines+markers', name='Transformer Forecast', line=dict(color='crimson', dash='dash', width=2), marker=dict(size=6, symbol='triangle-up'))
+            fig_tf.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            st.plotly_chart(fig_tf, use_container_width=True)
+        else:
+            st.info("Chưa có predictions CSV. Chạy `step13_advanced_ensemble.py` trước.")
 
     with tab2:
         st.markdown("**Joint End-to-End Network:** Fuses LSTM (Trend) and Transformer (Attention) with Huber Loss to aggressively minimize MAPE.")
-        try:
-            st.image(os.path.join(eda_path, '18_joint_lstm_transformer_forecast.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
-        
+        img_path = os.path.join(eda_path, '18_joint_lstm_transformer_forecast.png')
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
+        else:
+            st.warning("Plot not yet generated. Run `step13_ensemble.py`.")
+
     with tab3:
         st.markdown("**Monte Carlo Dropout 95% Confidence Intervals:** Neural Network uncertainty estimation indicating exactly where the forecast might fluctuate.")
-        try:
-            st.image(os.path.join(eda_path, '20_deep_learning_prediction_intervals.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
-        
+        img_path = os.path.join(eda_path, '20_deep_learning_prediction_intervals.png')
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
+        else:
+            st.warning("Plot not yet generated. Run `step22_mc_dropout_intervals.py`.")
+
     with tab4:
         st.markdown("**STL-LSTM Hybrid:** Uses Statistical Decomposition (STL) to remove Trend/Seasonality before passing chaotic residuals to LSTM.")
-        try:
-            st.image(os.path.join(eda_path, '17_stl_lstm_hybrid_forecast.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
-        
+        img_path = os.path.join(eda_path, '17_stl_lstm_hybrid_forecast.png')
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
+        else:
+            st.warning("Plot not yet generated. Run `step19_stl_lstm.py`.")
+
     with tab5:
-        st.markdown("**1D CNN-LSTM:** Uses Convolutional Neural Networks to filter out hotel/restaurant noise before sequence learning.")
-        try:
-            st.image(os.path.join(eda_path, '16_cnn_lstm_forecast.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
-        
+        st.markdown("**1D CNN-LSTM:** Uses Convolutional Neural Networks to filter out noise before sequence learning.")
+        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
+        if os.path.exists(test_pred_csv):
+            tp = pd.read_csv(test_pred_csv)
+            tp['month'] = pd.to_datetime(tp['month'])
+            train_cut = global_df[global_df['month'] < tp['month'].min()]
+            fig_cnn = px.line(train_cut, x='month', y='review_count', title='Global Review Count Forecast: Actuals vs CNN-LSTM', labels={'review_count': 'Review Count'})
+            fig_cnn.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Actuals (Global)', showlegend=True)
+            fig_cnn.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
+            fig_cnn.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines+markers', name='CNN-LSTM Forecast', line=dict(color='purple', width=2), marker=dict(size=6, symbol='square'))
+            fig_cnn.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            st.plotly_chart(fig_cnn, use_container_width=True)
+        else:
+            st.info("Chưa có predictions CSV. Chạy `step13_advanced_ensemble.py` trước.")
+
     with tab6:
         st.markdown("**BiLSTM-Attention:** Reads data forward and backward while assigning weighted attention to severe seasonal fluctuations.")
-        try:
-            st.image(os.path.join(eda_path, '15_bilstm_attention_forecast.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
-        
+        img_path = os.path.join(eda_path, '15_bilstm_attention_forecast.png')
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
+        else:
+            st.warning("Plot not yet generated. Run `step17_bilstm_attention.py`.")
+
     with tab7:
-        st.markdown("**Mixed STL-LSTM:** End-to-End deep learning architecture that directly ingests decomposed Trend and Seasonality signals as input features to output the final sequence.")
-        try:
-            st.image(os.path.join(eda_path, '23_mixed_stl_lstm_forecast.png'), use_container_width=True)
-        except: st.warning("Plot not yet generated.")
+        st.markdown("**Mixed STL-LSTM:** End-to-End architecture that ingests decomposed Trend and Seasonality signals as input features.")
+        img_path = os.path.join(eda_path, '23_mixed_stl_lstm_forecast.png')
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
+        else:
+            st.warning("Plot not yet generated. Run `step23_mixed_stl_lstm.py`.")
+
+
 
 
 

@@ -337,6 +337,19 @@ def run_advanced_ensemble(input_path, output_dir):
     
     print(f"\nSaved Super Ensemble plot to {plot_path}")
     
+    # Export test-set predictions to CSV so Streamlit can build interactive Plotly charts
+    test_preds_df = pd.DataFrame({
+        'month': test_dates,
+        'actuals': actuals,
+        'ensemble_pred': ensemble_preds,
+        'cnn_pred': preds_real_cnn,
+        'transformer_pred': preds_real_tf
+    })
+    test_preds_path = os.path.join(output_dir, 'ensemble_test_predictions.csv')
+    test_preds_df.to_csv(test_preds_path, index=False)
+    print(f"Saved test predictions CSV to {test_preds_path}")
+
+    
     # --- SAVE MODELS ---
     models_dir = os.path.join(project_dir, 'models')
     if not os.path.exists(models_dir):
