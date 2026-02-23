@@ -18,13 +18,83 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Hide Streamlit default toolbar (Share / bookmark / edit / GitHub icons)
+# Hide Streamlit default toolbar + apply premium dark background theme
 st.markdown("""
     <style>
-        [data-testid="stToolbar"] { visibility: hidden; height: 0; }
-        [data-testid="stDecoration"] { display: none; }
+        /* ── Hide toolbar ── */
+        [data-testid="stToolbar"]   { visibility: hidden; height: 0; }
+        [data-testid="stDecoration"]{ display: none; }
+
+        /* ── Main background: deep navy → midnight blue diagonal gradient ── */
+        .stApp {
+            background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 40%, #0a1628 100%);
+            background-attachment: fixed;
+        }
+
+        /* ── Sidebar: slightly lighter dark panel ── */
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #111f35 0%, #0d1b2a 100%);
+            border-right: 1px solid rgba(100,160,255,0.15);
+        }
+        [data-testid="stSidebar"] * { color: #d0e4ff !important; }
+
+        /* ── Main text color ── */
+        .stApp, .stApp p, .stApp li, .stApp label { color: #ccd6f6; }
+        h1, h2, h3, h4 { color: #64b5f6 !important; }
+
+        /* ── Metric cards: glassmorphism ── */
+        [data-testid="stMetric"] {
+            background: rgba(100, 181, 246, 0.08);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            border-radius: 12px;
+            padding: 12px 16px;
+            backdrop-filter: blur(8px);
+        }
+        [data-testid="stMetricLabel"]  { color: #90caf9 !important; font-size: 0.85rem; }
+        [data-testid="stMetricValue"]  { color: #ffffff !important; }
+
+        /* ── Dataframe / tables ── */
+        [data-testid="stDataFrame"] { 
+            border: 1px solid rgba(100,181,246,0.2); 
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* ── Tab bar ── */
+        .stTabs [data-baseweb="tab-list"] {
+            background: rgba(255,255,255,0.04);
+            border-radius: 8px;
+            padding: 4px;
+        }
+        .stTabs [data-baseweb="tab"] { color: #90caf9; }
+        .stTabs [aria-selected="true"] {
+            background: rgba(100,181,246,0.2) !important;
+            color: #ffffff !important;
+            border-radius: 6px;
+        }
+
+        /* ── Buttons ── */
+        .stButton>button {
+            background: linear-gradient(135deg, #1565c0, #0d47a1);
+            color: white;
+            border: none;
+            border-radius: 8px;
+        }
+        .stButton>button:hover { background: linear-gradient(135deg, #1976d2, #1565c0); }
+
+        /* ── Info / Warning / Success boxes ── */
+        [data-testid="stAlert"] {
+            background: rgba(100,181,246,0.08) !important;
+            border-left: 4px solid #64b5f6 !important;
+            border-radius: 0 8px 8px 0;
+            color: #ccd6f6 !important;
+        }
+
+        /* ── Divider ── */
+        hr { border-color: rgba(100,181,246,0.2) !important; }
     </style>
 """, unsafe_allow_html=True)
+
 
 # --- MODEL DEFINITIONS FOR INFERENCE ---
 class Simple_LSTM(nn.Module):
