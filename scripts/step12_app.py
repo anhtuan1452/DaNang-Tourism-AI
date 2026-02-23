@@ -18,6 +18,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Hide Streamlit default toolbar (Share / bookmark / edit / GitHub icons)
+st.markdown("""
+    <style>
+        [data-testid="stToolbar"] { visibility: hidden; height: 0; }
+        [data-testid="stDecoration"] { display: none; }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- MODEL DEFINITIONS FOR INFERENCE ---
 class Simple_LSTM(nn.Module):
     def __init__(self, input_size, hidden_size=64, num_layers=2, output_size=1, dropout=0.2):
