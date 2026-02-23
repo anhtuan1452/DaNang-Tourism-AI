@@ -366,63 +366,76 @@ def run_advanced_ensemble(input_path, output_dir):
     start_future_month = global_df['month'].max() + pd.DateOffset(months=1)
     
     # ============================================================
-    # DUAL-SEQUENCE SEASONAL BOOTSTRAPPING
-    # Maintain separate input sequences for CNN and Transformer,
-    # and inject seasonal auxiliary features from the same calendar month
-    # one year ago to preserve natural variation.
+    # SEASONAL-ANCHORED AUTOREGRESSION
+    # Key insight: Inject ACTUAL same-month-last-year review_count into
+    # the rolling CONTEXT window (not the model's potentially drifting
+    # prediction). The MODEL still predicts the output — but it now sees
+    # a realistic, seasonally-grounded context each step.
+    # This prevents error accumulation while preserving model-learned patterns.
     # ============================================================
     for step in range(12):
-        # --- CNN-LSTM prediction ---
-        seq_cnn_t = torch.FloatTensor(seq_cnn).unsqueeze(0).to(device)
-        with torch.no_grad():
-            pred_cnn_scaled = model_cnn(seq_cnn_t).cpu().numpy()[0, 0]
-        # Inverse transform CNN: use last row of seq_cnn as dummy context
-        dummy_c = seq_cnn[-1].copy()
-        dummy_c[target_idx] = pred_cnn_scaled
-        real_c = scaler_cnn.inverse_transform([dummy_c])[0, target_idx]
-        
-        # --- Transformer prediction ---
-        seq_tf_t = torch.FloatTensor(seq_tf).unsqueeze(0).to(device)
-        with torch.no_grad():
-            pred_tf_scaled = model_tf(seq_tf_t).cpu().numpy()[0, 0]
-        # Inverse transform TF: use last row of seq_tf as dummy context
-        dummy_t = seq_tf[-1].copy()
-        dummy_t[target_idx] = pred_tf_scaled
-        log_real_t = scaler_tf.inverse_transform([dummy_t])[0, target_idx]
-        real_t = np.expm1(log_real_t)  # Convert from log-space back to actual scale
-        
-        # Blend with dynamic weights
-        blended_real = (real_t * w_tf) + (real_c * w_cnn)
-        # Clip to prevent runaway values (below 0 or unrealistically high)
-        blended_real = float(np.clip(blended_real, 50, 3000))
-        future_preds_ensemble.append(blended_real)
-        
-        # --- Seasonal Feature Bootstrap: use same calendar month from 1 year ago ---
+        # --- Identify future month and look up seasonal anchor from 1 year ago ---
         future_month = start_future_month + pd.DateOffset(months=step)
         same_month_last_year = future_month - pd.DateOffset(years=1)
         match = global_df[global_df['month'] == same_month_last_year]
         
+        # --- Get seasonal anchor row first (needed for both amplitude correction and context) ---
         if len(match) > 0:
-            seasonal_aux = match[features].values[0].copy()  # Real values from 1 year ago
+            anchor_row = match[features].values[0].copy()
+            anchor_review = float(anchor_row[target_idx])  # Last year's actual review_count
         else:
-            # Fallback: inverse-transform the CNN's last row
-            seasonal_aux = scaler_cnn.inverse_transform([seq_cnn[-1]])[0].copy()
+            anchor_row = scaler_cnn.inverse_transform([seq_cnn[-1]])[0].copy()
+            anchor_review = None  # No prior year data — will use model prediction
         
-        # Build next real row: predicted review_count + seasonal aux features
-        next_real_row = seasonal_aux.copy()
-        next_real_row[target_idx] = blended_real
+        # --- CNN-LSTM prediction (from current context) ---
+        seq_cnn_t = torch.FloatTensor(seq_cnn).unsqueeze(0).to(device)
+        with torch.no_grad():
+            pred_cnn_scaled = model_cnn(seq_cnn_t).cpu().numpy()[0, 0]
+        dummy_c = seq_cnn[-1].copy()
+        dummy_c[target_idx] = pred_cnn_scaled
+        real_c = scaler_cnn.inverse_transform([dummy_c])[0, target_idx]
         
-        # Update CNN sequence
-        next_cnn_row = scaler_cnn.transform([next_real_row])[0]
+        # --- Transformer prediction (from current context) ---
+        seq_tf_t = torch.FloatTensor(seq_tf).unsqueeze(0).to(device)
+        with torch.no_grad():
+            pred_tf_scaled = model_tf(seq_tf_t).cpu().numpy()[0, 0]
+        dummy_t = seq_tf[-1].copy()
+        dummy_t[target_idx] = pred_tf_scaled
+        log_real_t = scaler_tf.inverse_transform([dummy_t])[0, target_idx]
+        real_t = np.expm1(log_real_t)
+        
+        # --- IEW Ensemble blend (same as during test evaluation) ---
+        blended_model = float(np.clip((real_t * w_tf) + (real_c * w_cnn), 50, 3000))
+        
+        # === POST-PROCESSING: Seasonal-Naïve Amplitude Correction ===
+        # Neural networks regress to the mean — they compress extreme seasonal peaks.
+        # To restore realistic amplitude (historical range ~320-668), we blend the
+        # model's output with last year's actual same-month value.
+        # NOTE: This ONLY affects the 12-month future forecast CSV.
+        #       Train/test metrics and IEW weights are completely unaffected.
+        NAIVE_WEIGHT = 0.60  # 60% Seasonal Naïve + 40% Ensemble Model
+        if anchor_review is not None:
+            blended_real = (1 - NAIVE_WEIGHT) * blended_model + NAIVE_WEIGHT * anchor_review
+        else:
+            blended_real = blended_model  # Fallback: pure model when no prior year exists
+        blended_real = float(np.clip(blended_real, 50, 3000))
+        future_preds_ensemble.append(blended_real)
+        
+        # --- Update context windows with seasonal anchor (prevents error compounding) ---
+        anchor_row[target_idx] = anchor_review if anchor_review is not None else blended_real
+        next_cnn_row = scaler_cnn.transform([anchor_row])[0]
         seq_cnn = np.vstack([seq_cnn[1:], next_cnn_row])
         
-        # Update Transformer sequence (log-space)
-        next_real_log = next_real_row.copy()
-        next_real_log[target_idx] = np.log1p(blended_real)  # log-space review count
-        next_tf_row = scaler_tf.transform([next_real_log])[0]
+        anchor_row_log = anchor_row.copy()
+        anchor_row_log[target_idx] = np.log1p(anchor_row[target_idx])
+        next_tf_row = scaler_tf.transform([anchor_row_log])[0]
         seq_tf = np.vstack([seq_tf[1:], next_tf_row])
         
-        print(f"  {future_month.strftime('%Y-%m')}: CNN={real_c:.1f}  TF={real_t:.1f}  Blend={blended_real:.1f}")
+        naive_str = f"{anchor_review:.0f}" if anchor_review else "N/A"
+        print(f"  {future_month.strftime('%Y-%m')}: Final={blended_real:.0f}  "
+              f"(Model={blended_model:.0f}, Naïve={naive_str})")
+
+
 
 
 
