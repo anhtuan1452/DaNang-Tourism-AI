@@ -8,6 +8,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import matplotlib.pyplot as plt
 import math
+import pickle
 
 # Metrics
 def mean_absolute_percentage_error(y_true, y_pred): 
@@ -80,17 +81,23 @@ class TimeSeriesTransformer(nn.Module):
         prediction = self.fc(output)
         return prediction
 
-def run_transformer(input_path, output_dir):
+def run_transformer(input_path, output_dir, models_dir):
     print(f"Loading data from {input_path}...")
     df = pd.read_csv(input_path)
     df['month'] = pd.to_datetime(df['month'])
     
-    # --- ABLATION EXPERIMENT: Exclude Anomalous Locations ---
+    # --- POST-COVID FILTERING ---
+    df = df[df['month'] >= '2022-01-01'].copy()
+    print(f"Filtered to Post-COVID era. {len(df)} records from {df['month'].min().date()} to {df['month'].max().date()}")
+
+    # --- EXCLUDE ANOMALOUS LOCATIONS ---
     excluded_locations = ['d6974493'] # Dacotour
     df = df[~df['locationId'].isin(excluded_locations)].copy()
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    if not os.path.exists(models_dir):
+        os.makedirs(models_dir)
 
     # 1. Global Aggregation
     global_df = df.groupby('month').agg({
@@ -101,12 +108,10 @@ def run_transformer(input_path, output_dir):
     }).reset_index()
     global_df = global_df.sort_values('month')
     
-    # Add COVID-19 feature flag
-    global_df['is_covid'] = ((global_df['month'].dt.year >= 2020) & (global_df['month'].dt.year <= 2021)).astype(int)
     global_df.reset_index(drop=True, inplace=True)
     
     # Define features
-    features = ['review_count', 'avg_sentiment', 'rainfall_mm', 'holiday_count', 'is_covid']
+    features = ['review_count', 'avg_sentiment', 'rainfall_mm', 'holiday_count']
     
     # --- TARGET TRANSFORMATION ---
     # Log-transform the target to heavily penalize over/under forecasting spikes 
@@ -116,19 +121,30 @@ def run_transformer(input_path, output_dir):
     data = global_df[features].values
     target_idx = features.index('review_count')
     
-    # 2. Train-Test Split (Time-based: 2017-2022 vs 2023-2024)
-    split_date = pd.to_datetime('2022-12-31')
-    train_idx = global_df[global_df['month'] <= split_date].index[-1]
+    # 2. Train-Test Split (Since data is small POST-2022, we use last 6 months for testing to maximize training size)
+    # Available data is typically Jan 2022 -> Max (mid 2024).
+    split_idx = len(global_df) - 6
+    train_idx = split_idx - 1 # Index of the last training sample
     
     # 3. Scaling
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaler.fit(data[:train_idx+1])
     scaled_data = scaler.transform(data)
     
+    # Save the scaler
+    scaler_path = os.path.join(models_dir, 'scaler_post_covid.pkl')
+    with open(scaler_path, 'wb') as f:
+        pickle.dump(scaler, f)
+    print(f"Scaler saved to {scaler_path}")
+
     # 4. Create sequences (Sliding Window)
     lookback = 12
     horizon = 1
     X, y = create_sequences(scaled_data, target_col_idx=target_idx, lookback=lookback, horizon=horizon)
+    
+    # Note: If train_idx - lookback + 1 <= 0, we don't have enough data to train with lookback=12 and test=6.
+    # We may need to ensure we have enough points. 2022 to mid 2024 = 30 months roughly.
+    # 30 - 12 (lookback) - 1 (horizon) = 17 sequences.
     
     X_train_np = X[:train_idx - lookback + 1]
     y_train_np = y[:train_idx - lookback + 1]
@@ -139,6 +155,9 @@ def run_transformer(input_path, output_dir):
     print(f"X_train shape: {X_train_np.shape}, y_train shape: {y_train_np.shape}")
     print(f"X_test shape: {X_test_np.shape}, y_test shape: {y_test_np.shape}")
     
+    if len(X_train_np) <= 0:
+        raise ValueError("Not enough post-COVID data to train with lookback=12. Check dataset date ranges.")
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
@@ -147,8 +166,9 @@ def run_transformer(input_path, output_dir):
     X_test = torch.FloatTensor(X_test_np).to(device)
     y_test = torch.FloatTensor(y_test_np).to(device)
     
+    # Use smaller batch size for small dataset
     train_dataset = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
     
     # 5. Build SUPER-OPTIMIZED Transformer Model
     print("Building and Training MAE-Optimized Transformer Model (PyTorch)...")
@@ -164,12 +184,11 @@ def run_transformer(input_path, output_dir):
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.005, weight_decay=1e-4)
     
     # SUPER OPTIMIZATION 3: Cosine Annealing Learning Rate Scheduler
-    # This slowly decreases the learning rate in a cosine curve, helping the model settle perfectly into global minima.
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200, eta_min=1e-6)
     
     # Training Loop with early stopping
-    epochs = 200
-    patience = 30 # Increased patience since scheduler needs time to drop LR
+    epochs = 400
+    patience = 50
     best_loss = float('inf')
     early_stop_counter = 0
     
@@ -200,13 +219,18 @@ def run_transformer(input_path, output_dir):
             model.load_state_dict(best_model_state)
             break
             
-        if (epoch+1) % 10 == 0:
+        if (epoch+1) % 50 == 0:
             current_lr = scheduler.get_last_lr()[0]
             print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.6f}, LR: {current_lr:.6f}')
             
     # Load best weights
     model.load_state_dict(best_model_state)
     
+    # Save the model
+    model_path = os.path.join(models_dir, 'transformer_post_covid.pt')
+    torch.save(model.state_dict(), model_path)
+    print(f"Model saved to {model_path}")
+
     # 6. Evaluation
     print("Evaluating Super-Optimized Transformer Model on Test Set...")
     model.eval()
@@ -224,20 +248,17 @@ def run_transformer(input_path, output_dir):
     y_test_real = np.expm1(y_test_log)
     
     transformer_metrics = get_metrics(y_test_real, predictions_real)
-    print("\n--- Vanilla Transformer Metrics (Test Set 2023-2024) ---")
+    print("\n--- Post-COVID Transformer Metrics (Test Set) ---")
     print(transformer_metrics)
     
     # Compare with Baseline
-    baseline_path = os.path.join(output_dir, 'baseline_metrics.csv')
-    if os.path.exists(baseline_path):
-        baseline_metrics = pd.read_csv(baseline_path, index_col=0)
-        baseline_metrics.loc['Super-Optimized Transformer'] = transformer_metrics
-        baseline_metrics.to_csv(baseline_path)
-        print("\nUpdated Metrics File:")
-        print(baseline_metrics)
+    baseline_path = os.path.join(output_dir, 'post_covid_metrics.csv')
+    df_metrics = pd.DataFrame([transformer_metrics], index=['Post-COVID Transformer'])
+    df_metrics.to_csv(baseline_path)
+    print("\nSaved Metrics File:")
+    print(df_metrics)
     
     # 7. Plotting
-    # Get actuals in real scale (not log) for plotting
     actual_real_counts = np.expm1(global_df['review_count'].values)
     test_dates = global_df['month'].iloc[-len(y_test_real):].values
     
@@ -246,80 +267,22 @@ def run_transformer(input_path, output_dir):
     plt.plot(test_dates, y_test_real, label='Test Actuals', color='blue', marker='o')
     plt.plot(test_dates, predictions_real, label='Transformer Forecast', color='purple', marker='^', linestyle='--')
     
-    plt.title('Global Review Count Forecast: Actuals vs Transformer')
+    plt.title('Post-COVID Global Review Count Forecast')
     plt.xlabel('Month')
     plt.ylabel('Review Count')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plot_path = os.path.join(output_dir, '7_transformer_forecasts.png')
+    plot_path = os.path.join(output_dir, '24_post_covid_transformer_forecasts.png')
     plt.savefig(plot_path)
     plt.close()
     
-    # 8. Feature Importance (Permutation Method)
-    print("\n--- Running Permutation Feature Importance ---")
-    model.eval()
-    baseline_rmse = transformer_metrics['RMSE']
-    feature_importance = {}
-    
-    # We will perturb each feature in X_test and measure the increase in RMSE
-    with torch.no_grad():
-        for i, feature_name in enumerate(features):
-            if feature_name in ['is_covid']: 
-                continue # Skip static/flag features if desired, though we can still permute
-                
-            # Create a corrupted version of X_test
-            X_test_corrupted = X_test_np.copy()
-            
-            # Shuffle the specific feature across the batch dimension
-            # to break its relationship with the target
-            np.random.shuffle(X_test_corrupted[:, :, i])
-            
-            X_test_corrupted_tensor = torch.FloatTensor(X_test_corrupted).to(device)
-            corrupted_predictions_scaled = model(X_test_corrupted_tensor).cpu().numpy()
-            
-            dummy_input_corr = np.zeros((len(corrupted_predictions_scaled), len(features)))
-            dummy_input_corr[:, target_idx] = corrupted_predictions_scaled.flatten()
-            corrupted_predictions_log = scaler.inverse_transform(dummy_input_corr)[:, target_idx]
-            corrupted_predictions_real = np.expm1(corrupted_predictions_log)
-            
-            corrupted_rmse = np.sqrt(mean_squared_error(y_test_real, corrupted_predictions_real))
-            
-            # The larger the increase in error, the more important the feature
-            importance_score = corrupted_rmse - baseline_rmse
-            feature_importance[feature_name] = max(0, importance_score) # floor at 0
-            
-    # Normalize to percentages
-    total_importance = sum(feature_importance.values())
-    if total_importance > 0:
-        for k in feature_importance:
-            feature_importance[k] = (feature_importance[k] / total_importance) * 100
-            
-    print("Feature Importance (% contribution to accuracy):")
-    for k, v in sorted(feature_importance.items(), key=lambda item: item[1], reverse=True):
-        print(f"  {k}: {v:.2f}%")
-        
-    # Bar Chart for Feature Importance
-    plt.figure(figsize=(10, 6))
-    sorted_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=False)
-    names = [x[0] for x in sorted_features]
-    scores = [x[1] for x in sorted_features]
-    
-    plt.barh(names, scores, color='teal')
-    plt.title('Transformer Feature Importance (Permutation)')
-    plt.xlabel('Importance Score (%)')
-    plt.tight_layout()
-    fi_plot_path = os.path.join(output_dir, '8_feature_importance.png')
-    plt.savefig(fi_plot_path)
-    plt.close()
-    
-    print(f"Saved Feature Importance plot to {fi_plot_path}")
-
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
     
     input_file = os.path.join(project_dir, 'data', 'processed', 'monthly_location_features.csv')
     output_directory = os.path.join(project_dir, 'eda_outputs')
+    models_directory = os.path.join(project_dir, 'models')
     
-    run_transformer(input_file, output_directory)
+    run_transformer(input_file, output_directory, models_directory)
