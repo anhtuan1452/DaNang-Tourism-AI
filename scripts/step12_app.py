@@ -496,139 +496,179 @@ elif mode == "6. Future Forecasting (Interactive)":
     if not os.path.exists(model_path) or not os.path.exists(scaler_path) or not os.path.exists(meta_path):
         st.warning("Arena model assets not found. Please run step25_post_covid_hyper_arena.py first.")
     else:
-        import json
-        with open(meta_path, 'r') as f:
-            meta = json.load(f)
-        best_arch = meta.get("winning_architecture", "Unknown")
-        
-        st.success(f"🏆 **Arena Winner Deployed:** {best_arch}")
-        
-        # Load the scaler
-        with open(scaler_path, 'rb') as f:
-            scaler = pickle.load(f)
+        try:
+            import json
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+            best_arch = meta.get("winning_architecture", "Unknown")
             
-        # Initialize and load model dynamically
-        features = ['review_count', 'avg_sentiment', 'rainfall_mm', 'holiday_count']
-        num_feats = len(features)
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        if best_arch == "TimeSeriesTransformer":
-            model = TimeSeriesTransformer(num_features=num_feats, d_model=32, nhead=4, num_layers=2, dim_feedforward=128, dropout=0.1, horizon=1)
-        elif best_arch == "Simple_LSTM":
-            model = Simple_LSTM(input_size=num_feats, hidden_size=64, num_layers=2, dropout=0.2)
-        elif best_arch == "CNN_LSTM":
-            model = CNN_LSTM(input_size=num_feats, hidden_size=64, num_layers=2, dropout=0.2)
-        elif best_arch == "BiLSTMAttention":
-            model = BiLSTMAttention(input_size=num_feats, hidden_size=64, num_layers=2, dropout=0.3)
-        else:
-            st.error(f"Unknown architecture: {best_arch}")
-            st.stop()
+            st.success(f"🏆 **Arena Winner Deployed:** {best_arch}")
             
-        model.to(device)
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-        model.eval()
-        
-        # Display Metrics
-        st.subheader("Model Validation Performance")
-        metrics_csv = os.path.join(project_dir, 'eda_outputs', 'post_covid_arena_metrics.csv')
-        if os.path.exists(metrics_csv):
-            metrics_df = pd.read_csv(metrics_csv, index_col=0)
-            st.dataframe(metrics_df.style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
-            st.caption("Lower is better. The winning model is loaded securely into Streamlit Memory.")
-            
-        st.divider()
-        st.subheader("Simulate the Future")
-        
-        horizon = st.slider("Select Forecast Horizon (Months Ahead):", min_value=1, max_value=12, value=3, step=1)
-        
-        if st.button("Generate Forecast"):
-            with st.spinner("Running deep learning inference..."):
-                # Prepare data
-                post_covid_df = global_df[global_df['month'] >= '2022-01-01'].copy()
-                post_covid_df['review_count'] = np.log1p(post_covid_df['review_count'])
+            # Load the scaler
+            with open(scaler_path, 'rb') as f:
+                scaler = pickle.load(f)
                 
-                # Get the last 12 months from the dataset
-                lookback = 12
-                target_idx = features.index('review_count')
+            # Initialize and load model dynamically
+            features = ['review_count', 'avg_sentiment', 'rainfall_mm', 'holiday_count']
+            num_feats = len(features)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            
+            if best_arch == "TimeSeriesTransformer":
+                model = TimeSeriesTransformer(num_features=num_feats, d_model=32, nhead=4, num_layers=2, dim_feedforward=128, dropout=0.1, horizon=1)
+            elif best_arch == "Simple_LSTM":
+                model = Simple_LSTM(input_size=num_feats, hidden_size=64, num_layers=2, dropout=0.2)
+            elif best_arch == "CNN_LSTM":
+                model = CNN_LSTM(input_size=num_feats, hidden_size=64, num_layers=2, dropout=0.2)
+            elif best_arch == "BiLSTMAttention":
+                model = BiLSTMAttention(input_size=num_feats, hidden_size=64, num_layers=2, dropout=0.3)
+            else:
+                st.error(f"Unknown architecture: {best_arch}")
+                st.stop()
                 
-                if len(post_covid_df) < lookback:
-                    st.error(f"Not enough recent data. Need at least {lookback} months.")
-                else:
-                    last_known_data = post_covid_df[features].values[-lookback:]
-                    scaled_sequence = scaler.transform(last_known_data)
+            model.to(device)
+            model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+            model.eval()
+            
+            # Display Metrics
+            st.subheader("Model Validation Performance")
+            metrics_csv = os.path.join(project_dir, 'eda_outputs', 'post_covid_arena_metrics.csv')
+            if os.path.exists(metrics_csv):
+                metrics_df = pd.read_csv(metrics_csv, index_col=0)
+                st.dataframe(metrics_df.style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
+                st.caption("Lower is better. The winning model is loaded securely into Streamlit Memory.")
+                
+            st.divider()
+            st.subheader("Simulate the Future")
+            
+            horizon = st.slider("Select Forecast Horizon (Months Ahead):", min_value=1, max_value=12, value=3, step=1)
+            
+            if st.button("Generate Forecast"):
+                with st.spinner("Running deep learning inference..."):
+                    # Prepare data
+                    post_covid_df = global_df[global_df['month'] >= '2022-01-01'].copy()
+                    post_covid_df['review_count'] = np.log1p(post_covid_df['review_count'])
                     
-                    # Autoregressive loop
-                    current_sequence = scaled_sequence.copy()
-                    predictions_scaled = []
+                    # Get the last 12 months from the dataset
+                    lookback = 12
+                    target_idx = features.index('review_count')
                     
-                    # Assuming average constant values for future exogenous features
-                    avg_sentiment_future = post_covid_df['avg_sentiment'].mean()
-                    rainfall_future = post_covid_df['rainfall_mm'].mean()
-                    holiday_future = 0 # Can be adjusted
-                    
-                    for _ in range(horizon):
-                        seq_tensor = torch.FloatTensor(current_sequence).unsqueeze(0).to(device)
-                        with torch.no_grad():
-                            next_pred_scaled = model(seq_tensor).cpu().numpy()[0, 0]
+                    if len(post_covid_df) < lookback:
+                        st.error(f"Not enough recent data. Need at least {lookback} months.")
+                    else:
+                        last_known_data = post_covid_df[features].values[-lookback:]
+                        scaled_sequence = scaler.transform(last_known_data)
+                        
+                        # Autoregressive loop
+                        current_sequence = scaled_sequence.copy()
+                        predictions_scaled = []
+                        
+                        # Assuming average constant values for future exogenous features
+                        avg_sentiment_future = post_covid_df['avg_sentiment'].mean()
+                        rainfall_future = post_covid_df['rainfall_mm'].mean()
+                        holiday_future = 0 # Can be adjusted
+                        
+                        for _ in range(horizon):
+                            seq_tensor = torch.FloatTensor(current_sequence).unsqueeze(0).to(device)
+                            with torch.no_grad():
+                                next_pred_scaled = model(seq_tensor).cpu().numpy()[0, 0]
+                                
+                            predictions_scaled.append(next_pred_scaled)
                             
-                        predictions_scaled.append(next_pred_scaled)
+                            # Build next input step (Predicted review, avg sentiment, avg rainfall, avg holiday)
+                            next_step_unscaled = np.array([[0.0, avg_sentiment_future, rainfall_future, holiday_future]])
+                            next_step_unscaled[0, target_idx] = 0.0 # Placeholder
+                            
+                            # Scale it
+                            next_step_scaled = scaler.transform(next_step_unscaled)[0]
+                            # Inject predicted value
+                            next_step_scaled[target_idx] = next_pred_scaled
+                            
+                            # Shift sequence
+                            current_sequence = np.vstack((current_sequence[1:], next_step_scaled))
+                            
+                        # Inverse transform predictions
+                        dummy_inputs = np.zeros((horizon, len(features)))
+                        dummy_inputs[:, target_idx] = predictions_scaled
+                        predictions_log = scaler.inverse_transform(dummy_inputs)[:, target_idx]
+                        predictions_real = np.expm1(predictions_log)
                         
-                        # Build next input step (Predicted review, avg sentiment, avg rainfall, avg holiday)
-                        next_step_unscaled = np.array([[0.0, avg_sentiment_future, rainfall_future, holiday_future]])
-                        next_step_unscaled[0, target_idx] = 0.0 # Placeholder
+                        # --- PLOTTING ---
+                        # Historical Data for Plot (Unlogged)
+                        hist_plot = post_covid_df.copy()
+                        hist_plot['review_count'] = np.expm1(hist_plot['review_count'])
                         
-                        # Scale it
-                        next_step_scaled = scaler.transform(next_step_unscaled)[0]
-                        # Inject predicted value
-                        next_step_scaled[target_idx] = next_pred_scaled
+                        last_date = hist_plot['month'].iloc[-1]
+                        future_dates = [last_date + pd.DateOffset(months=i) for i in range(1, horizon + 1)]
                         
-                        # Shift sequence
-                        current_sequence = np.vstack((current_sequence[1:], next_step_scaled))
+                        future_df = pd.DataFrame({
+                            'month': future_dates,
+                            'review_count': predictions_real,
+                            'Type': 'Forecast'
+                        })
+                        hist_plot['Type'] = 'Historical'
                         
-                    # Inverse transform predictions
-                    dummy_inputs = np.zeros((horizon, len(features)))
-                    dummy_inputs[:, target_idx] = predictions_scaled
-                    predictions_log = scaler.inverse_transform(dummy_inputs)[:, target_idx]
-                    predictions_real = np.expm1(predictions_log)
-                    
-                    # --- PLOTTING ---
-                    # Historical Data for Plot (Unlogged)
-                    hist_plot = post_covid_df.copy()
-                    hist_plot['review_count'] = np.expm1(hist_plot['review_count'])
-                    
-                    last_date = hist_plot['month'].iloc[-1]
-                    future_dates = [last_date + pd.DateOffset(months=i) for i in range(1, horizon + 1)]
-                    
-                    future_df = pd.DataFrame({
-                        'month': future_dates,
-                        'review_count': predictions_real,
-                        'Type': 'Forecast'
-                    })
-                    hist_plot['Type'] = 'Historical'
-                    
-                    # Connect the lines
-                    connection_row = hist_plot.iloc[-1:].copy()
-                    connection_row['Type'] = 'Forecast'
-                    
-                    plot_df = pd.concat([hist_plot[['month', 'review_count', 'Type']], 
-                                        connection_row[['month', 'review_count', 'Type']],
-                                        future_df])
-                    
-                    fig = px.line(plot_df, x='month', y='review_count', color='Type', 
-                                  color_discrete_map={'Historical': 'black', 'Forecast': 'purple'},
-                                  title="Live Autoregressive Transformer Forecast",
-                                  markers=True)
-                                  
-                    # Highlight future zone
-                    fig.add_vrect(x0=last_date, x1=future_dates[-1], fillcolor="purple", opacity=0.1, line_width=0, annotation_text="Forecast Horizon")
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Provide a data table
-                    st.write("### Predicted Timeline")
-                    future_df['review_count'] = future_df['review_count'].astype(int)
-                    future_df.rename(columns={'month': 'Month', 'review_count': 'Estimated Tourist Volume'}, inplace=True)
-                    st.dataframe(future_df[['Month', 'Estimated Tourist Volume']], hide_index=True)
-                    
-                    st.success("Successfully extrapolated temporal logic into the future.")
+                        # Connect the lines
+                        connection_row = hist_plot.iloc[-1:].copy()
+                        connection_row['Type'] = 'Forecast'
+                        
+                        plot_df = pd.concat([hist_plot[['month', 'review_count', 'Type']], 
+                                            connection_row[['month', 'review_count', 'Type']],
+                                            future_df])
+                        
+                        fig = px.line(plot_df, x='month', y='review_count', color='Type', 
+                                      color_discrete_map={'Historical': 'black', 'Forecast': 'purple'},
+                                      title="Live Autoregressive Transformer Forecast",
+                                      markers=True)
+                                      
+                        # Highlight future zone
+                        fig.add_vrect(x0=last_date, x1=future_dates[-1], fillcolor="purple", opacity=0.1, line_width=0, annotation_text="Forecast Horizon")
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Provide a data table
+                        st.write("### Predicted Timeline")
+                        future_df['review_count'] = future_df['review_count'].astype(int)
+                        future_df.rename(columns={'month': 'Month', 'review_count': 'Estimated Tourist Volume'}, inplace=True)
+                        st.dataframe(future_df[['Month', 'Estimated Tourist Volume']], hide_index=True)
+                        
+                        st.success("Successfully extrapolated temporal logic into the future.")
+                        
+            # --- NEW SECTION: Advanced Ensemble 12-Month Static Forecast ---
+            st.divider()
+            st.subheader("🌟 The Ultimate 12-Month Future Trajectory (Advanced Multi-Model Ensemble)")
+            st.markdown("""
+            This section displays the **pre-calculated forecast** from our highest-performing architecture: 
+            the **Advanced Multi-Model Ensemble** (Super-Transformer + CNN-LSTM). 
+            It leverages the full 2017-2026 dataset to project the next year of tourism.
+            """)
+            
+            future_csv_path = os.path.join(project_dir, 'eda_outputs', '12_month_future_forecast.csv')
+            if os.path.exists(future_csv_path):
+                future_ensemble_df = pd.read_csv(future_csv_path)
+                
+                # Plot the Ensemble Future
+                hist_plot = global_df.copy() # All Time
+                fig = px.line(hist_plot, x='month', y='review_count', title="12-Month Strategic Blueprint (Advanced Ensemble)")
+                fig.update_traces(line=dict(color='black', width=2), name='Historical Database (2017-2026)', showlegend=True)
+                
+                future_ensemble_df['month'] = pd.to_datetime(future_ensemble_df['month'])
+                fig.add_scatter(x=future_ensemble_df['month'], y=future_ensemble_df['forecasted_review_count'], mode='lines+markers', name='Ensemble Consensus', line=dict(color='orange', width=4, dash='dot'))
+                fig.update_layout(xaxis_range=['2024-01-01', future_ensemble_df['month'].max() + pd.DateOffset(months=2)]) # Zoom in on the tail end
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Display Table with Trend Icons
+                st.markdown("### Month-over-Month Outlook")
+                
+                # Formatting for display
+                display_df = future_ensemble_df.copy()
+                display_df.rename(columns={'month': 'Month', 'forecasted_review_count': 'Tourists (Proxy Review Vol)', 'Trend': 'Predicted Trend'}, inplace=True)
+                
+                st.dataframe(display_df.style.highlight_max(subset=['Tourists (Proxy Review Vol)'], color='lightgreen', axis=0)
+                            .highlight_min(subset=['Tourists (Proxy Review Vol)'], color='salmon', axis=0), 
+                            use_container_width=True, hide_index=True)
+            else:
+                st.info("The Advanced Ensemble 12-Month Forecast CSV was not found. Please run `step13_advanced_ensemble.py` first.")
+
+        except Exception as e:
+            st.error(f"Error initializing interactive forecasting module: {e}")
 
