@@ -218,14 +218,22 @@ This application leverages Deep Learning (Transformers/LSTM) to predict future t
 
 # Sidebar Navigation
 mode = st.sidebar.selectbox(
-    "Select Analysis Mode",
-    ["1. Global Overview & Forecasting", "2. Location Deep Dive", "3. Seasonality & Behaviors", "4. Data Viewer", "5. AI Pipeline & Source Code", "6. Future Forecasting (Interactive)"]
+    "Chọn Trang",
+    [
+        "1. 📊 Tổng Quan & Dữ Liệu",
+        "2. 🌤️ Phân Tích Mùa Vụ",
+        "3. 🏨 Phân Tích Địa Điểm",
+        "4. 🧠 Mô Hình & Kết Quả",
+        "5. 🔮 Dự Báo Tương Lai",
+        "6. ⚙️ AI Pipeline & Source Code",
+    ]
 )
 
 
-if mode == "1. Global Overview & Forecasting":
-    st.header("🌍 Global Da Nang Travel Trends")
-    st.write("This tab shows the aggregated tourist activity across all locations in Da Nang.")
+
+if mode == "1. 📊 Tổng Quan & Dữ Liệu":
+    st.header("📊 Tổng Quan Xu Hướng Du Lịch Đà Nẵng")
+    st.write("Tổng hợp hoạt động du lịch trên toàn bộ các địa điểm tại Đà Nẵng — từ lịch sử đến nguồn dữ liệu gốc.")
     
     # KPI metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -240,132 +248,14 @@ if mode == "1. Global Overview & Forecasting":
     fig.add_vrect(x0="2020-01-01", x1="2021-12-31", fillcolor="red", opacity=0.2, layer="below", line_width=0, annotation_text="COVID-19 Period")
     st.plotly_chart(fig, use_container_width=True)
     
-    # We display our pre-calculated metrics
-    st.subheader("Deep Learning Model Leaderboard (MAPE Optimized)")
-    
-    try:
-        metrics_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs', 'baseline_metrics.csv')
-        if os.path.exists(metrics_csv):
-            metrics_df = pd.read_csv(metrics_csv, index_col=0)
-            metrics_df = metrics_df.sort_values(by='MAPE')
-            
-            best_model_name = metrics_df.index[0]
-            best_mape = metrics_df.iloc[0]['MAPE']
-            
-            st.markdown(f"""
-            *We evaluated {len(metrics_df)} different Time-Series models (from Naive to state-of-the-art Deep Neural Networks) on the entire unmodified Tourism Ecosystem. The **{best_model_name}** achieved an industry-leading **MAPE of {best_mape:.2f}%**.*
-            """)
-            
-            st.dataframe(metrics_df.style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
-        else:
-            st.warning("Leaderboard metrics file not found.")
-    except Exception as e:
-        st.error(f"Could not load leaderboard: {e}")
-
-    st.subheader("Advanced Architecture Visualizations")
-    tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Advanced Ensemble", "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"])
-    
-    eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
-    
-    with tab0:
-        st.markdown("**Advanced Multi-Model Ensemble:** Fuses the predictions of a Super-Optimized Transformer and a Deep CNN-LSTM (60/40 split) to achieve the highest predictive stability across the entire 2017-2026 dataset.")
-        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
-        if os.path.exists(test_pred_csv):
-            tp = pd.read_csv(test_pred_csv)
-            tp['month'] = pd.to_datetime(tp['month'])
-            # Historical backdrop (train period)
-            train_cut = global_df[global_df['month'] < tp['month'].min()]
-            fig_ens = px.line(train_cut, x='month', y='review_count',
-                              title='All-Time Tourism Forecast: Advanced Multi-Model Ensemble',
-                              labels={'review_count': 'Review Count'})
-            fig_ens.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Historical (Train)', showlegend=True)
-            fig_ens.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
-            fig_ens.add_scatter(x=tp['month'], y=tp['ensemble_pred'], mode='lines+markers', name='Ensemble Forecast', line=dict(color='red', width=2.5), marker=dict(size=8, symbol='star'))
-            fig_ens.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines', name='CNN-LSTM Only', line=dict(color='purple', dash='dot', width=1.5), opacity=0.7)
-            fig_ens.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines', name='Transformer Only', line=dict(color='green', dash='dash', width=1.5), opacity=0.7)
-            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['month'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
-            st.plotly_chart(fig_ens, use_container_width=True)
-        else:
-            st.info("Chưa có predictions CSV. Chạy `step13_advanced_ensemble.py` trước.")
-
-    with tab1:
-        st.markdown("**Transformer (Pure):** The standalone Attention mechanism dynamically finding complex non-linear patterns across time with no recurrence.")
-        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
-        if os.path.exists(test_pred_csv):
-            tp = pd.read_csv(test_pred_csv)
-            tp['month'] = pd.to_datetime(tp['month'])
-            train_cut = global_df[global_df['month'] < tp['month'].min()]
-            fig_tf = px.line(train_cut, x='month', y='review_count', title='Global Review Count Forecast: Actuals vs Transformer', labels={'review_count': 'Review Count'})
-            fig_tf.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Actuals (Global)', showlegend=True)
-            fig_tf.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
-            fig_tf.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines+markers', name='Transformer Forecast', line=dict(color='crimson', dash='dash', width=2), marker=dict(size=6, symbol='triangle-up'))
-            fig_tf.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
-            st.plotly_chart(fig_tf, use_container_width=True)
-        else:
-            st.info("Chưa có predictions CSV. Chạy `step13_advanced_ensemble.py` trước.")
-
-    with tab2:
-        st.markdown("**Joint End-to-End Network:** Fuses LSTM (Trend) and Transformer (Attention) with Huber Loss to aggressively minimize MAPE.")
-        img_path = os.path.join(eda_path, '18_joint_lstm_transformer_forecast.png')
-        if os.path.exists(img_path):
-            st.image(img_path, use_container_width=True)
-        else:
-            st.warning("Plot not yet generated. Run `step13_ensemble.py`.")
-
-    with tab3:
-        st.markdown("**Monte Carlo Dropout 95% Confidence Intervals:** Neural Network uncertainty estimation indicating exactly where the forecast might fluctuate.")
-        img_path = os.path.join(eda_path, '20_deep_learning_prediction_intervals.png')
-        if os.path.exists(img_path):
-            st.image(img_path, use_container_width=True)
-        else:
-            st.warning("Plot not yet generated. Run `step22_mc_dropout_intervals.py`.")
-
-    with tab4:
-        st.markdown("**STL-LSTM Hybrid:** Uses Statistical Decomposition (STL) to remove Trend/Seasonality before passing chaotic residuals to LSTM.")
-        img_path = os.path.join(eda_path, '17_stl_lstm_hybrid_forecast.png')
-        if os.path.exists(img_path):
-            st.image(img_path, use_container_width=True)
-        else:
-            st.warning("Plot not yet generated. Run `step19_stl_lstm.py`.")
-
-    with tab5:
-        st.markdown("**1D CNN-LSTM:** Uses Convolutional Neural Networks to filter out noise before sequence learning.")
-        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
-        if os.path.exists(test_pred_csv):
-            tp = pd.read_csv(test_pred_csv)
-            tp['month'] = pd.to_datetime(tp['month'])
-            train_cut = global_df[global_df['month'] < tp['month'].min()]
-            fig_cnn = px.line(train_cut, x='month', y='review_count', title='Global Review Count Forecast: Actuals vs CNN-LSTM', labels={'review_count': 'Review Count'})
-            fig_cnn.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Actuals (Global)', showlegend=True)
-            fig_cnn.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
-            fig_cnn.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines+markers', name='CNN-LSTM Forecast', line=dict(color='purple', width=2), marker=dict(size=6, symbol='square'))
-            fig_cnn.update_layout(legend=dict(orientation='h', yanchor='bottom', y=1.02))
-            st.plotly_chart(fig_cnn, use_container_width=True)
-        else:
-            st.info("Chưa có predictions CSV. Chạy `step13_advanced_ensemble.py` trước.")
-
-    with tab6:
-        st.markdown("**BiLSTM-Attention:** Reads data forward and backward while assigning weighted attention to severe seasonal fluctuations.")
-        img_path = os.path.join(eda_path, '15_bilstm_attention_forecast.png')
-        if os.path.exists(img_path):
-            st.image(img_path, use_container_width=True)
-        else:
-            st.warning("Plot not yet generated. Run `step17_bilstm_attention.py`.")
-
-    with tab7:
-        st.markdown("**Mixed STL-LSTM:** End-to-End architecture that ingests decomposed Trend and Seasonality signals as input features.")
-        img_path = os.path.join(eda_path, '23_mixed_stl_lstm_forecast.png')
-        if os.path.exists(img_path):
-            st.image(img_path, use_container_width=True)
-        else:
-            st.warning("Plot not yet generated. Run `step23_mixed_stl_lstm.py`.")
+    st.info("💡 **Tip:** Xem Bảng Xếp Hạng Mô Hình và biểu đồ chi tiết tại trang **4. 🧠 Mô Hình & Kết Quả**.")
 
 
 
 
 
-elif mode == "2. Location Deep Dive":
-    st.header("🏨 Specific Location Forecasting")
+elif mode == "3. 🏨 Phân Tích Địa Điểm":
+    st.header("🏨 Phân Tích Địa Điểm Cụ Thể")
     
     # Sort locations by total reviews so top attractions appear first
     location_list_sorted = df.groupby('location_name')['review_count'].sum().sort_values(ascending=False).index.tolist()
@@ -389,8 +279,8 @@ elif mode == "2. Location Deep Dive":
     st.plotly_chart(fig2, use_container_width=True)
 
 
-elif mode == "3. Seasonality & Behaviors":
-    st.header("🕵️‍♂️ Behavioral Analysis: Domestic vs International")
+elif mode == "2. 🌤️ Phân Tích Mùa Vụ":
+    st.header("🌤️ Phân Tích Mùa Vụ & Hành Vi Du Khách")
     st.write("Excluding COVID years (2020-2021) to find true organic seasonality.")
     
     # Exclude covid
@@ -428,52 +318,131 @@ elif mode == "3. Seasonality & Behaviors":
     3. Sentiment / Holidays: Negligible on a macro-monthly scale.
     """)
 
-elif mode == "4. Data Viewer":
-    st.header("🗂️ Data Viewer")
-    st.write("Explore raw and processed datasets used in this project.")
+elif mode == "4. 🧠 Mô Hình & Kết Quả":
+    st.header("🧠 Mô Hình Deep Learning & Kết Quả Đánh Giá")
+    st.write("Bảng xếp hạng toàn bộ các mô hình được đánh giá trên dữ liệu 2017–2026 và biểu đồ trực quan kết quả dự báo.")
     
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.dirname(script_dir)
-    data_dir = os.path.join(project_dir, 'data')
-    
-    data_type = st.radio("Select Data Type:", ["Raw Data", "Processed Data"], horizontal=True)
-    
-    if data_type == "Raw Data":
-        folder = os.path.join(data_dir, 'raw')
-    else:
-        folder = os.path.join(data_dir, 'processed')
-        
-    if os.path.exists(folder):
-        files = [f for f in os.listdir(folder) if f.endswith('.csv')]
-        if files:
-            selected_file = st.selectbox("Select File:", files)
-            file_path = os.path.join(folder, selected_file)
-            try:
-                # Get total rows count fast (optional, but good for UX)
-                # To keep it simple, just read with nrows
-                df_preview = pd.read_csv(file_path, nrows=1000)
-                st.write(f"Previewing **{selected_file}** (first 1000 rows shown):")
-                st.dataframe(df_preview, use_container_width=True)
-                
-                file_size = os.path.getsize(file_path) / (1024 * 1024)
-                
-                # Check actual rows
-                try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        total_lines = sum(1 for _ in f) - 1 # Note: very large files might take a second to count
-                except:
-                    total_lines = "Unknown"
-                    
-                st.info(f"📁 **File Size:** {file_size:.2f} MB | **Total Rows:** {total_lines}")
-            except Exception as e:
-                st.error(f"Could not read file {selected_file}. Error: {e}")
+    # --- Leaderboard ---
+    st.subheader("🏆 Bảng Xếp Hạng Mô Hình (MAPE Tối Ưu)")
+    try:
+        metrics_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs', 'baseline_metrics.csv')
+        if os.path.exists(metrics_csv):
+            metrics_df = pd.read_csv(metrics_csv, index_col=0)
+            metrics_df = metrics_df.sort_values(by='MAPE')
+            best_model_name = metrics_df.index[0]
+            best_mape = metrics_df.iloc[0]['MAPE']
+            st.markdown(f"*Đã đánh giá **{len(metrics_df)} mô hình** trên toàn bộ hệ sinh thái du lịch. Mô hình **{best_model_name}** đạt MAPE tốt nhất: **{best_mape:.2f}%**.*")
+            st.dataframe(metrics_df.style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
         else:
-            st.warning(f"No CSV files found in {data_type}.")
-    else:
-        st.error(f"Directory not found: {folder}. (Ensure data/raw is pushed to GitHub)")
+            st.warning("Chưa có file metrics. Chạy step13_advanced_ensemble.py trước.")
+    except Exception as e:
+        st.error(f"Lỗi khi tải leaderboard: {e}")
 
-elif mode == "5. AI Pipeline & Source Code":
-    st.header("⚙️ Project Architecture & Pipeline Steps")
+    st.divider()
+    
+    # --- Architecture Visualizations (moved from page 1) ---
+    st.subheader("� Biểu Đồ Dự Báo Theo Kiến Trúc")
+    tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Advanced Ensemble", "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"])
+    eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
+    
+    with tab0:
+        st.markdown("**Advanced Multi-Model Ensemble:** Fuses Transformer + CNN-LSTM (60/40 IEW) across the full 2017-2026 dataset.")
+        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
+        if os.path.exists(test_pred_csv):
+            tp = pd.read_csv(test_pred_csv); tp['month'] = pd.to_datetime(tp['month'])
+            train_cut = global_df[global_df['month'] < tp['month'].min()]
+            fig_ens = px.line(train_cut, x='month', y='review_count', title='All-Time Tourism Forecast: Advanced Multi-Model Ensemble', labels={'review_count': 'Review Count'})
+            fig_ens.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Historical (Train)', showlegend=True)
+            fig_ens.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
+            fig_ens.add_scatter(x=tp['month'], y=tp['ensemble_pred'], mode='lines+markers', name='Ensemble Forecast', line=dict(color='red', width=2.5), marker=dict(size=8, symbol='star'))
+            fig_ens.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines', name='CNN-LSTM Only', line=dict(color='purple', dash='dot', width=1.5), opacity=0.7)
+            fig_ens.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines', name='Transformer Only', line=dict(color='green', dash='dash', width=1.5), opacity=0.7)
+            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['month'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            st.plotly_chart(fig_ens, use_container_width=True)
+        else:
+            st.info("Chạy `step13_advanced_ensemble.py` để tạo predictions CSV.")
+    with tab1:
+        st.markdown("**Transformer (Pure):** Attention mechanism tìm kiếm pattern phi tuyến phức tạp không cần recurrence.")
+        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
+        if os.path.exists(test_pred_csv):
+            tp = pd.read_csv(test_pred_csv); tp['month'] = pd.to_datetime(tp['month'])
+            train_cut = global_df[global_df['month'] < tp['month'].min()]
+            fig_tf = px.line(train_cut, x='month', y='review_count', title='Actuals vs Transformer Forecast', labels={'review_count': 'Review Count'})
+            fig_tf.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Actuals (Global)', showlegend=True)
+            fig_tf.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
+            fig_tf.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines+markers', name='Transformer Forecast', line=dict(color='crimson', dash='dash', width=2), marker=dict(size=6, symbol='triangle-up'))
+            st.plotly_chart(fig_tf, use_container_width=True)
+        else:
+            st.info("Chạy `step13_advanced_ensemble.py` trước.")
+    with tab2:
+        st.markdown("**Joint End-to-End Network:** Fuses LSTM (Trend) và Transformer (Attention) với Huber Loss.")
+        img = os.path.join(eda_path, '18_joint_lstm_transformer_forecast.png')
+        st.image(img, use_container_width=True) if os.path.exists(img) else st.warning("Plot chưa được tạo.")
+    with tab3:
+        st.markdown("**MC Dropout 95% Confidence Intervals:** Ước tính độ không chắc chắn của Neural Network.")
+        img = os.path.join(eda_path, '20_deep_learning_prediction_intervals.png')
+        st.image(img, use_container_width=True) if os.path.exists(img) else st.warning("Plot chưa được tạo.")
+    with tab4:
+        st.markdown("**STL-LSTM Hybrid:** Phân rã chuỗi (STL) trước khi truyền phần dư vào LSTM.")
+        img = os.path.join(eda_path, '17_stl_lstm_hybrid_forecast.png')
+        st.image(img, use_container_width=True) if os.path.exists(img) else st.warning("Plot chưa được tạo.")
+    with tab5:
+        st.markdown("**1D CNN-LSTM:** CNN lọc nhiễu trước, LSTM học pattern theo thời gian.")
+        test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
+        if os.path.exists(test_pred_csv):
+            tp = pd.read_csv(test_pred_csv); tp['month'] = pd.to_datetime(tp['month'])
+            train_cut = global_df[global_df['month'] < tp['month'].min()]
+            fig_cnn = px.line(train_cut, x='month', y='review_count', title='Actuals vs CNN-LSTM Forecast', labels={'review_count': 'Review Count'})
+            fig_cnn.update_traces(line=dict(color='gray', width=1.5), opacity=0.5, name='Actuals (Global)', showlegend=True)
+            fig_cnn.add_scatter(x=tp['month'], y=tp['actuals'], mode='lines+markers', name='Test Actuals', line=dict(color='royalblue', width=2), marker=dict(size=6))
+            fig_cnn.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines+markers', name='CNN-LSTM Forecast', line=dict(color='purple', width=2), marker=dict(size=6, symbol='square'))
+            st.plotly_chart(fig_cnn, use_container_width=True)
+        else:
+            st.info("Chạy `step13_advanced_ensemble.py` trước.")
+    with tab6:
+        st.markdown("**BiLSTM-Attention:** Đọc dữ liệu hai chiều (past + future context) với attention weights.")
+        img = os.path.join(eda_path, '15_bilstm_attention_forecast.png')
+        st.image(img, use_container_width=True) if os.path.exists(img) else st.warning("Plot chưa được tạo.")
+    with tab7:
+        st.markdown("**Mixed STL-LSTM:** Kiến trúc end-to-end nhận trực tiếp Trend và Seasonality như input features.")
+        img = os.path.join(eda_path, '23_mixed_stl_lstm_forecast.png')
+        st.image(img, use_container_width=True) if os.path.exists(img) else st.warning("Plot chưa được tạo.")
+
+    st.divider()
+    # --- Data Viewer (embedded as expander) ---
+    with st.expander("🗂️ Xem Dữ Liệu Gốc", expanded=False):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_dir = os.path.dirname(script_dir)
+        data_dir = os.path.join(project_dir, 'data')
+        data_type = st.radio("Loại dữ liệu:", ["Raw Data", "Processed Data"], horizontal=True, key="dv_type")
+        folder = os.path.join(data_dir, 'raw' if data_type == "Raw Data" else 'processed')
+        if os.path.exists(folder):
+            files = [f for f in os.listdir(folder) if f.endswith('.csv')]
+            if files:
+                selected_file = st.selectbox("Chọn File:", files, key="dv_file")
+                file_path = os.path.join(folder, selected_file)
+                try:
+                    df_preview = pd.read_csv(file_path, nrows=1000)
+                    st.write(f"Preview **{selected_file}** (1000 dòng đầu):")
+                    st.dataframe(df_preview, use_container_width=True)
+                    file_size = os.path.getsize(file_path) / (1024 * 1024)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as fv:
+                            total_lines = sum(1 for _ in fv) - 1
+                    except:
+                        total_lines = "Unknown"
+                    st.info(f"📁 **Dung lượng:** {file_size:.2f} MB | **Tổng dòng:** {total_lines}")
+                except Exception as e:
+                    st.error(f"Không đọc được file {selected_file}. Lỗi: {e}")
+            else:
+                st.warning(f"Không có CSV trong {data_type}.")
+        else:
+            st.error(f"Thư mục không tồn tại: {folder}")
+
+
+
+elif mode == "6. ⚙️ AI Pipeline & Source Code":
+    st.header("⚙️ Kiến Trúc Dự Án & Các Bước Pipeline")
     st.write("This project was built systematically through multiple Python scripts. Below is the chronological execution pipeline:")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -525,8 +494,8 @@ elif mode == "5. AI Pipeline & Source Code":
         else:
             st.warning("No script files found.")
 
-elif mode == "6. Future Forecasting (Interactive)":
-    st.header("🔮 Interactive Future Forecasting (Transformer Edge Model)")
+elif mode == "5. 🔮 Dự Báo Tương Lai":
+    st.header("🔮 Dự Báo Tương Lai (Interactive Transformer)")
     st.markdown("""
     This lab allows you to run **live autoregressive inference** on the Post-COVID data ecosystem (2022-2024). 
     We deployed an automated Hyper-Arena that tested all 4 major Deep Learning architectures (LSTM, CNN-LSTM, BiLSTM-Attention, Transformer) automatically scoring them by MAPE on recent data.
