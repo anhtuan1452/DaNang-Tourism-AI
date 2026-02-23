@@ -645,29 +645,44 @@ elif mode == "6. Future Forecasting (Interactive)":
             future_csv_path = os.path.join(project_dir, 'eda_outputs', '12_month_future_forecast.csv')
             if os.path.exists(future_csv_path):
                 future_ensemble_df = pd.read_csv(future_csv_path)
+                future_ensemble_df['month'] = pd.to_datetime(future_ensemble_df['month'])
+                
+                # Slider to choose how many months to show
+                max_months = len(future_ensemble_df)
+                horizon_ens = st.slider("Hiển thị bao nhiêu tháng tương lai:", min_value=1, max_value=max_months, value=max_months, step=1, key="ens_horizon_slider")
+                
+                future_filtered = future_ensemble_df.iloc[:horizon_ens].copy()
                 
                 # Plot the Ensemble Future
-                hist_plot = global_df.copy() # All Time
-                fig = px.line(hist_plot, x='month', y='review_count', title="12-Month Strategic Blueprint (Advanced Ensemble)")
-                fig.update_traces(line=dict(color='black', width=2), name='Historical Database (2017-2026)', showlegend=True)
+                hist_plot = global_df.copy()
+                fig = px.line(hist_plot[hist_plot['month'] >= '2024-01-01'], x='month', y='review_count', title=f"12-Month Strategic Blueprint — Next {horizon_ens} Months (Advanced Ensemble)")
+                fig.update_traces(line=dict(color='black', width=2), name='Historical (2024–2026)', showlegend=True)
                 
-                future_ensemble_df['month'] = pd.to_datetime(future_ensemble_df['month'])
-                fig.add_scatter(x=future_ensemble_df['month'], y=future_ensemble_df['forecasted_review_count'], mode='lines+markers', name='Ensemble Consensus', line=dict(color='orange', width=4, dash='dot'))
-                fig.update_layout(xaxis_range=['2024-01-01', future_ensemble_df['month'].max() + pd.DateOffset(months=2)]) # Zoom in on the tail end
+                # Connect history to forecast with a bridge point
+                last_hist_row = hist_plot.iloc[-1:]
+                bridge = pd.DataFrame({'month': [last_hist_row['month'].values[0]], 'forecasted_review_count': [last_hist_row['review_count'].values[0]]})
+                bridge_and_forecast = pd.concat([bridge, future_filtered[['month', 'forecasted_review_count']]])
+                
+                fig.add_scatter(x=bridge_and_forecast['month'], y=bridge_and_forecast['forecasted_review_count'], mode='lines+markers',
+                                name=f'Ensemble Forecast (Feb 2026+)', line=dict(color='orange', width=4, dash='dot'),
+                                marker=dict(size=8, symbol='diamond'))
+                fig.add_vrect(x0=bridge_and_forecast['month'].iloc[0], x1=future_filtered['month'].max() + pd.DateOffset(months=1), 
+                              fillcolor="orange", opacity=0.05, line_width=0, annotation_text=f"Dự báo {horizon_ens} tháng")
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Display Table with Trend Icons
-                st.markdown("### Month-over-Month Outlook")
+                st.markdown("### 📋 Bảng dự báo chi tiết")
                 
-                # Formatting for display
-                display_df = future_ensemble_df.copy()
-                display_df.rename(columns={'month': 'Month', 'forecasted_review_count': 'Tourists (Proxy Review Vol)', 'Trend': 'Predicted Trend'}, inplace=True)
+                display_df = future_filtered.copy()
+                display_df['forecasted_review_count'] = display_df['forecasted_review_count'].round(0).astype(int)
+                display_df.rename(columns={'month': 'Tháng', 'forecasted_review_count': 'Lượt Review Dự Báo (Proxy)', 'Trend': 'Xu Hướng'}, inplace=True)
                 
-                st.dataframe(display_df.style.highlight_max(subset=['Tourists (Proxy Review Vol)'], color='lightgreen', axis=0)
-                            .highlight_min(subset=['Tourists (Proxy Review Vol)'], color='salmon', axis=0), 
+                st.dataframe(display_df.style.highlight_max(subset=['Lượt Review Dự Báo (Proxy)'], color='lightgreen', axis=0)
+                            .highlight_min(subset=['Lượt Review Dự Báo (Proxy)'], color='salmon', axis=0), 
                             use_container_width=True, hide_index=True)
             else:
-                st.info("The Advanced Ensemble 12-Month Forecast CSV was not found. Please run `step13_advanced_ensemble.py` first.")
+                st.info("Chưa có file dự báo. Vui lòng chạy `step13_advanced_ensemble.py` trước.")
+
 
         except Exception as e:
             st.error(f"Error initializing interactive forecasting module: {e}")

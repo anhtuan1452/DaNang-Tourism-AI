@@ -351,52 +351,83 @@ def run_advanced_ensemble(input_path, output_dir):
     print(">> PREDICTING THE NEXT 12 MONTHS (FUTURE FORECAST)")
     print("="*50)
     
-    # Start the autoregressive loop from the last 12 months of the known dataset (ending Jan 2026)
-    last_sequence_real = global_df[features].values[-lookback:]
-    current_sequence = scaler_cnn.transform(last_sequence_real)
+    # Start the autoregressive loop from the last 12 months of data
+    last_sequence_real = global_df[features].values[-lookback:]  # (12, 5) real values
+    
+    # Maintain separate scaled sequences for each model (they use different scalers and spaces)
+    seq_cnn = scaler_cnn.transform(last_sequence_real)  # CNN uses standard MinMax scale
+    
+    # Transformer was trained on log1p(review_count), so we need log-space version
+    last_sequence_log = last_sequence_real.copy().astype(float)
+    last_sequence_log[:, target_idx] = np.log1p(last_sequence_log[:, target_idx])
+    seq_tf = scaler_tf.transform(last_sequence_log)  # TF uses log-space MinMax scale
     
     future_preds_ensemble = []
+    start_future_month = global_df['month'].max() + pd.DateOffset(months=1)
     
-    # We will assume future non-sentiment/metric features (holiday, rainfall, covid) roughly stay the same 
-    # as their last known values or recent rolling averages. For simplicity, we just use the last known values
-    # EXCEPT for holiday_count and rainfall which we can loop from the previous year.
-    # Actually, simplest autoregression just feeds the entire output vector back or assumes static aux features.
-    # Since our models only predict `review_count`, we must furnish the other 4 features dynamically.
-    
-    last_known_metrics = current_sequence[-1].copy()
-    
-    for _ in range(12):
-        seq_tensor = torch.FloatTensor(current_sequence).unsqueeze(0).to(device) # (1, 12, 5)
-        
+    # ============================================================
+    # DUAL-SEQUENCE SEASONAL BOOTSTRAPPING
+    # Maintain separate input sequences for CNN and Transformer,
+    # and inject seasonal auxiliary features from the same calendar month
+    # one year ago to preserve natural variation.
+    # ============================================================
+    for step in range(12):
+        # --- CNN-LSTM prediction ---
+        seq_cnn_t = torch.FloatTensor(seq_cnn).unsqueeze(0).to(device)
         with torch.no_grad():
-            pred_cnn_scaled = model_cnn(seq_tensor).cpu().numpy()[0, 0]
-            pred_tf_scaled = model_tf(seq_tensor).cpu().numpy()[0, 0]
-            
-        # Inverse transform to blend in real scale
-        dummy_c = last_known_metrics.copy()
+            pred_cnn_scaled = model_cnn(seq_cnn_t).cpu().numpy()[0, 0]
+        # Inverse transform CNN: use last row of seq_cnn as dummy context
+        dummy_c = seq_cnn[-1].copy()
         dummy_c[target_idx] = pred_cnn_scaled
         real_c = scaler_cnn.inverse_transform([dummy_c])[0, target_idx]
         
-        dummy_t = last_known_metrics.copy()
+        # --- Transformer prediction ---
+        seq_tf_t = torch.FloatTensor(seq_tf).unsqueeze(0).to(device)
+        with torch.no_grad():
+            pred_tf_scaled = model_tf(seq_tf_t).cpu().numpy()[0, 0]
+        # Inverse transform TF: use last row of seq_tf as dummy context
+        dummy_t = seq_tf[-1].copy()
         dummy_t[target_idx] = pred_tf_scaled
-        real_t = np.expm1(scaler_tf.inverse_transform([dummy_t])[0, target_idx])
+        log_real_t = scaler_tf.inverse_transform([dummy_t])[0, target_idx]
+        real_t = np.expm1(log_real_t)  # Convert from log-space back to actual scale
         
-        # Blend with dynamic inverse-error weights calculated during evaluation
+        # Blend with dynamic weights
         blended_real = (real_t * w_tf) + (real_c * w_cnn)
+        # Clip to prevent runaway values (below 0 or unrealistically high)
+        blended_real = float(np.clip(blended_real, 50, 3000))
         future_preds_ensemble.append(blended_real)
         
-        # To formulate the next input sequence, we need the scaled version of the blended prediction
-        # For CNN, it's strictly the blended real -> scaled. 
-        # Since we just feed the sequence forward, let's create a new scaled row
-        next_row_real = scaler_cnn.inverse_transform([last_known_metrics])[0]
-        next_row_real[target_idx] = blended_real
+        # --- Seasonal Feature Bootstrap: use same calendar month from 1 year ago ---
+        future_month = start_future_month + pd.DateOffset(months=step)
+        same_month_last_year = future_month - pd.DateOffset(years=1)
+        match = global_df[global_df['month'] == same_month_last_year]
         
-        # Just assume other features (sentiment, weather) are same as last month, or we can copy from 12 months ago
-        # To be safe, we'll just keep them static as dummy variables
-        next_row_scaled = scaler_cnn.transform([next_row_real])[0]
+        if len(match) > 0:
+            seasonal_aux = match[features].values[0].copy()  # Real values from 1 year ago
+        else:
+            # Fallback: inverse-transform the CNN's last row
+            seasonal_aux = scaler_cnn.inverse_transform([seq_cnn[-1]])[0].copy()
         
-        # Shift sequence forward
-        current_sequence = np.vstack([current_sequence[1:], next_row_scaled])
+        # Build next real row: predicted review_count + seasonal aux features
+        next_real_row = seasonal_aux.copy()
+        next_real_row[target_idx] = blended_real
+        
+        # Update CNN sequence
+        next_cnn_row = scaler_cnn.transform([next_real_row])[0]
+        seq_cnn = np.vstack([seq_cnn[1:], next_cnn_row])
+        
+        # Update Transformer sequence (log-space)
+        next_real_log = next_real_row.copy()
+        next_real_log[target_idx] = np.log1p(blended_real)  # log-space review count
+        next_tf_row = scaler_tf.transform([next_real_log])[0]
+        seq_tf = np.vstack([seq_tf[1:], next_tf_row])
+        
+        print(f"  {future_month.strftime('%Y-%m')}: CNN={real_c:.1f}  TF={real_t:.1f}  Blend={blended_real:.1f}")
+
+
+
+
+
         
     future_dates = pd.date_range(start=global_df['month'].max() + pd.DateOffset(months=1), periods=12, freq='MS')
     future_df = pd.DataFrame({'month': future_dates, 'forecasted_review_count': future_preds_ensemble})
