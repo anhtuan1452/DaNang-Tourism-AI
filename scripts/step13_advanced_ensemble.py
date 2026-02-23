@@ -23,7 +23,16 @@ def get_metrics(y_true, y_pred):
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mape = mean_absolute_percentage_error(y_true, y_pred)
-    return {'MAE': mae, 'RMSE': rmse, 'MAPE': mape}
+    
+    # Calculate Directional Accuracy (DA) to evaluate Trend predictions
+    if len(y_true) > 1:
+        actual_diff = np.diff(y_true)
+        pred_diff = np.diff(y_pred)
+        da = np.mean(np.sign(actual_diff) == np.sign(pred_diff)) * 100
+    else:
+        da = 0.0
+        
+    return {'MAE': mae, 'RMSE': rmse, 'MAPE': mape, 'DA (%)': da}
 
 def create_sequences(data, target_col_idx, lookback=12, horizon=1):
     X, y = [], []
@@ -392,9 +401,24 @@ def run_advanced_ensemble(input_path, output_dir):
     future_dates = pd.date_range(start=global_df['month'].max() + pd.DateOffset(months=1), periods=12, freq='MS')
     future_df = pd.DataFrame({'month': future_dates, 'forecasted_review_count': future_preds_ensemble})
     
+    # Determine the Trend (Increase/Decrease) step-by-step
+    trends = []
+    last_val = global_df['review_count'].iloc[-1]
+    for pred in future_preds_ensemble:
+        if pred > last_val:
+            trends.append("Increase \U0001f4c8") # 📈
+        elif pred < last_val:
+            trends.append("Decrease \U0001f4c9") # 📉
+        else:
+            trends.append("Stable \u2796") # ➖
+        last_val = pred
+        
+    future_df['Trend'] = trends
+    
     future_csv_path = os.path.join(output_dir, '12_month_future_forecast.csv')
     future_df.to_csv(future_csv_path, index=False)
     
+    print("\n--- 12 MONTH FUTURE TREND FORECAST ---")
     print(future_df.to_string(index=False))
     print(f"\nSaved 12-month future forecast to {future_csv_path}")
     print("Models and Scalers saved to models/ directory.")
