@@ -287,6 +287,59 @@ except Exception as e:
     st.stop()
 
 
+# Keyboard Shortcuts Logic (1-6)
+import streamlit.components.v1 as components
+
+# Initialize session state for page selection if not exists
+if 'page_index' not in st.session_state:
+    st.session_state.page_index = 0
+
+# The Javascript will set a URL query parameter or we can just send it via query params
+# Actually, the easiest native way is to use `st.query_params` or just a text input hack.
+# Another way: Javascript clicks hidden buttons.
+pages = [
+    "1. 📊 Overview & Data",
+    "2. 🌤️ Seasonality Analysis",
+    "3. 🏨 Location Deep Dive",
+    "4. 🧠 Models & Results",
+    "5. 🔮 Future Forecasting",
+    "6. ⚙️ AI Pipeline & Source Code",
+]
+
+# We render a set of hidden buttons that update the state
+st.markdown("<div style='display: none;'>", unsafe_allow_html=True)
+for i, page in enumerate(pages):
+    if st.button(f"hidden_btn_{i}", key=f"btn_{i}"):
+        st.session_state.page_index = i
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Javascript to catch 1-6 keys and click the corresponding hidden button
+components.html(
+    """
+    <script>
+    const parentDoc = window.parent.document;
+    parentDoc.addEventListener('keydown', function(event) {
+        // Ignore if user is typing in an input field
+        if (event.target.tagName.toLowerCase() === 'input' || event.target.tagName.toLowerCase() === 'textarea') return;
+        
+        const key = parseInt(event.key);
+        if (key >= 1 && key <= 6) {
+            const index = key - 1;
+            // Find all streamlit buttons
+            const buttons = parentDoc.querySelectorAll('button p');
+            buttons.forEach(p => {
+                if (p.textContent === 'hidden_btn_' + index) {
+                    p.parentElement.click();
+                }
+            });
+        }
+    });
+    </script>
+    """,
+    height=0,
+    width=0,
+)
+
 # --- STREAMLIT UI ---
 st.title("🏖️ Forecasting Tourism Trends/Demand of Entertainment Attractions in Da Nang Using Online Reviews and Deep Time-Series Models ")
 st.markdown("""
@@ -297,15 +350,15 @@ This application leverages Deep Learning (Transformers/LSTM) to predict future t
 # Sidebar Navigation
 mode = st.sidebar.selectbox(
     "Select Page",
-    [
-        "1. 📊 Overview & Data",
-        "2. 🌤️ Seasonality Analysis",
-        "3. 🏨 Location Deep Dive",
-        "4. 🧠 Models & Results",
-        "5. 🔮 Future Forecasting",
-        "6. ⚙️ AI Pipeline & Source Code",
-    ]
+    options=pages,
+    index=st.session_state.page_index,
+    key='sidebar_nav'
 )
+
+# Sync the session state with manual selectbox changes
+if pages.index(mode) != st.session_state.page_index:
+    st.session_state.page_index = pages.index(mode)
+    st.rerun()
 
 
 
