@@ -279,17 +279,20 @@ def run_advanced_ensemble(input_path, output_dir):
     
     actuals = global_df['review_count'].values[train_idx+1:]
     
-    # We heavily weight the Transformer because it typically achieves drastically lower MAPE. 
-    # The CNN-LSTM is mostly just to smooth out variance and add a "second opinion" on complex edges.
-    ensemble_preds = (preds_real_tf * 0.6) + (preds_real_cnn * 0.4)
-    
     cnn_metrics = get_metrics(actuals, preds_real_cnn)
     tf_metrics = get_metrics(actuals, preds_real_tf)
+    
+    # Dynamic Inverse-Error Weighting to Harmonize MAE & MAPE
+    # The models that make smaller absolute errors get more voting power
+    w_cnn = (1.0 / cnn_metrics['MAE']) / ((1.0 / cnn_metrics['MAE']) + (1.0 / tf_metrics['MAE']))
+    w_tf = (1.0 / tf_metrics['MAE']) / ((1.0 / cnn_metrics['MAE']) + (1.0 / tf_metrics['MAE']))
+    
+    ensemble_preds = (preds_real_tf * w_tf) + (preds_real_cnn * w_cnn)
     ensemble_metrics = get_metrics(actuals, ensemble_preds)
     
     print(f"\nModel 1 (CNN-LSTM) Metrics: {cnn_metrics}")
     print(f"Model 2 (Super-Optimized Transformer) Metrics: {tf_metrics}")
-    print(f"All-Time Advanced Ensemble Metrics (60/40 Split): {ensemble_metrics}")
+    print(f"All-Time Advanced Ensemble Metrics (Dynamic IEW => TF: {w_tf:.2f}, CNN: {w_cnn:.2f}): {ensemble_metrics}")
     
     # Save Leaderboard
     baseline_path = os.path.join(output_dir, 'baseline_metrics.csv')
@@ -307,8 +310,8 @@ def run_advanced_ensemble(input_path, output_dir):
     
     plt.figure(figsize=(14, 7))
     plt.plot(global_df['month'], global_df['review_count'], label='Actuals (Global 2017-2026)', color='black', alpha=0.4)
-    plt.plot(test_dates, actuals, label='Test Actuals (2025-2026)', color='blue', marker='o')
-    plt.plot(test_dates, ensemble_preds, label='Advanced Ensemble (60/40) Forecast', color='red', marker='*', markersize=10, linestyle='-')
+    plt.plot(test_dates, actuals, label='Test Actuals', color='blue', marker='o')
+    plt.plot(test_dates, ensemble_preds, label=f'Advanced Ensemble ({w_tf:.2f}/{w_cnn:.2f}) Forecast', color='red', marker='*', markersize=10, linestyle='-')
     plt.plot(test_dates, preds_real_cnn, label='CNN-LSTM Only', color='purple', linestyle=':', alpha=0.5)
     plt.plot(test_dates, preds_real_tf, label='Transformer Only', color='green', linestyle='--', alpha=0.6)
     
@@ -369,8 +372,8 @@ def run_advanced_ensemble(input_path, output_dir):
         dummy_t[target_idx] = pred_tf_scaled
         real_t = np.expm1(scaler_tf.inverse_transform([dummy_t])[0, target_idx])
         
-        # Blend
-        blended_real = (real_t * 0.6) + (real_c * 0.4)
+        # Blend with dynamic inverse-error weights calculated during evaluation
+        blended_real = (real_t * w_tf) + (real_c * w_cnn)
         future_preds_ensemble.append(blended_real)
         
         # To formulate the next input sequence, we need the scaled version of the blended prediction
