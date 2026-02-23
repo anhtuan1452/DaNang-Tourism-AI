@@ -18,80 +18,68 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Hide Streamlit default toolbar + apply premium dark background theme
+# Hide Streamlit default toolbar + apply premium light background theme
 st.markdown("""
     <style>
         /* ── Hide toolbar ── */
         [data-testid="stToolbar"]   { visibility: hidden; height: 0; }
         [data-testid="stDecoration"]{ display: none; }
 
-        /* ── Main background: deep navy → midnight blue diagonal gradient ── */
+        /* ── Main background: soft sky-blue → white gradient ── */
         .stApp {
-            background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 40%, #0a1628 100%);
+            background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 50%, #e3f2fd 100%);
             background-attachment: fixed;
         }
 
-        /* ── Sidebar: slightly lighter dark panel ── */
+        /* ── Sidebar: clean white-blue panel ── */
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #111f35 0%, #0d1b2a 100%);
-            border-right: 1px solid rgba(100,160,255,0.15);
+            background: linear-gradient(180deg, #ffffff 0%, #e8f4fd 100%);
+            border-right: 1px solid rgba(30,136,229,0.15);
+            box-shadow: 2px 0 12px rgba(30,136,229,0.08);
         }
-        [data-testid="stSidebar"] * { color: #d0e4ff !important; }
 
-        /* ── Main text color ── */
-        .stApp, .stApp p, .stApp li, .stApp label { color: #ccd6f6; }
-        h1, h2, h3, h4 { color: #64b5f6 !important; }
-
-        /* ── Metric cards: glassmorphism ── */
+        /* ── Metric cards: glassmorphism light ── */
         [data-testid="stMetric"] {
-            background: rgba(100, 181, 246, 0.08);
-            border: 1px solid rgba(100, 181, 246, 0.2);
+            background: rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(30, 136, 229, 0.2);
             border-radius: 12px;
             padding: 12px 16px;
             backdrop-filter: blur(8px);
+            box-shadow: 0 4px 16px rgba(30,136,229,0.08);
         }
-        [data-testid="stMetricLabel"]  { color: #90caf9 !important; font-size: 0.85rem; }
-        [data-testid="stMetricValue"]  { color: #ffffff !important; }
-
-        /* ── Dataframe / tables ── */
-        [data-testid="stDataFrame"] { 
-            border: 1px solid rgba(100,181,246,0.2); 
-            border-radius: 8px;
-            overflow: hidden;
-        }
+        [data-testid="stMetricLabel"] { color: #1565c0 !important; font-size: 0.85rem; font-weight: 600; }
+        [data-testid="stMetricValue"] { color: #0d47a1 !important; }
 
         /* ── Tab bar ── */
         .stTabs [data-baseweb="tab-list"] {
-            background: rgba(255,255,255,0.04);
-            border-radius: 8px;
+            background: rgba(255,255,255,0.6);
+            border-radius: 10px;
             padding: 4px;
+            box-shadow: 0 2px 8px rgba(30,136,229,0.1);
         }
-        .stTabs [data-baseweb="tab"] { color: #90caf9; }
+        .stTabs [data-baseweb="tab"] { color: #1565c0; font-weight: 500; }
         .stTabs [aria-selected="true"] {
-            background: rgba(100,181,246,0.2) !important;
-            color: #ffffff !important;
+            background: rgba(30,136,229,0.15) !important;
+            color: #0d47a1 !important;
             border-radius: 6px;
         }
 
         /* ── Buttons ── */
         .stButton>button {
-            background: linear-gradient(135deg, #1565c0, #0d47a1);
+            background: linear-gradient(135deg, #1976d2, #1565c0);
             color: white;
             border: none;
             border-radius: 8px;
+            font-weight: 600;
+            box-shadow: 0 3px 10px rgba(21,101,192,0.3);
         }
-        .stButton>button:hover { background: linear-gradient(135deg, #1976d2, #1565c0); }
-
-        /* ── Info / Warning / Success boxes ── */
-        [data-testid="stAlert"] {
-            background: rgba(100,181,246,0.08) !important;
-            border-left: 4px solid #64b5f6 !important;
-            border-radius: 0 8px 8px 0;
-            color: #ccd6f6 !important;
+        .stButton>button:hover {
+            background: linear-gradient(135deg, #1e88e5, #1976d2);
+            box-shadow: 0 4px 14px rgba(21,101,192,0.4);
         }
 
         /* ── Divider ── */
-        hr { border-color: rgba(100,181,246,0.2) !important; }
+        hr { border-color: rgba(30,136,229,0.2) !important; }
     </style>
 """, unsafe_allow_html=True)
 
