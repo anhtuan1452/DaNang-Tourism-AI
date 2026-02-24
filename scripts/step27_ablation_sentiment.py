@@ -320,6 +320,27 @@ def run_ablation(input_path, output_dir):
     pred_path = os.path.join(output_dir, 'ablation_sentiment_predictions.csv')
     pred_df.to_csv(pred_path, index=False)
     print(f"Saved prediction comparison to {pred_path}")
+    
+    # --- PLOT COMPARISON ---
+    plt.figure(figsize=(16, 8))
+    train_cut = global_df[global_df['month'] < pred_df['month'].iloc[0]]
+    plt.plot(train_cut['month'], train_cut['review_count'], label='Historical (Train)', color='grey', alpha=0.5)
+    
+    plt.plot(pred_df['month'], pred_df['Actuals'], label='Test Actuals', color='black', linewidth=3)
+    plt.plot(pred_df['month'], pred_df['With Sentiment'], label='Advanced Ensemble (WITH Sentiment)', color='green', linewidth=3, marker='*')
+    plt.plot(pred_df['month'], pred_df['Without Sentiment'], label='Advanced Ensemble (WITHOUT Sentiment)', color='red', linestyle='--', linewidth=2)
+    
+    plt.title('Ablation Study: Impact of NLP Sentiment on Advanced Ensemble Forecasting', fontsize=16)
+    plt.xlabel('Date', fontsize=12)
+    plt.ylabel('Tourist Volume Proxy (Review Count)', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    plot_path = os.path.join(output_dir, 'step27_ablation_sentiment_comparison.png')
+    plt.savefig(plot_path, dpi=300)
+    plt.close()
+    print(f"Saved static plot to {plot_path}")
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
