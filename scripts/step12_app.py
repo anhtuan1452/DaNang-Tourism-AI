@@ -420,7 +420,11 @@ elif mode == "4. 🧠 Models & Results":
     
     # --- Architecture Visualizations (moved from page 1) ---
     st.subheader("📈 Forecast Visualizations by Architecture")
-    tab0, tab_base, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Advanced Ensemble", "Baseline Comparison", "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"])
+    tab0, tab_base, tab_ablation, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Advanced Ensemble", "Baseline Comparison", "Ablation: Impact of Sentiment", 
+        "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", 
+        "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"
+    ])
     eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
     
     with tab0:
@@ -489,6 +493,46 @@ elif mode == "4. 🧠 Models & Results":
                 st.image(img, use_container_width=True)
             else:
                 st.warning("Plot not yet generated. Run step26_compare_baselines.py.")
+                
+    with tab_ablation:
+        st.markdown("**SENTIMENT ABLATION STUDY:** Measures the exact impact of extracting semantic sentiment from unstructured reviews on the final Advanced Ensemble.")
+        
+        ablation_metrics_csv = os.path.join(eda_path, 'ablation_sentiment_metrics.csv')
+        ablation_preds_csv = os.path.join(eda_path, 'ablation_sentiment_predictions.csv')
+        
+        if os.path.exists(ablation_metrics_csv) and os.path.exists(ablation_preds_csv):
+            # Show Metrics Comparison
+            st.markdown("### 📊 Metrics Comparison")
+            metrics_df = pd.read_csv(ablation_metrics_csv, index_col=0)
+            st.dataframe(metrics_df.style.highlight_min(subset=['MAPE', 'MAE', 'RMSE'], color='lightgreen', axis=0)
+                                         .highlight_max(subset=['DA (%)'], color='lightgreen', axis=0), 
+                         use_container_width=True)
+            
+            # Key Insights
+            with_sentiment_mape = metrics_df.loc['With Sentiment', 'MAPE']
+            without_sentiment_mape = metrics_df.loc['Without Sentiment', 'MAPE']
+            improvement = without_sentiment_mape - with_sentiment_mape
+            
+            st.success(f"🔥 **Insight:** Including NLP Sentiment Analysis drops the MAPE by **{improvement:.2f}%** on the Advanced Ensemble. It provides the hidden micro-level intent needed to accurately track sudden volume spikes.")
+            
+            # Plot Timeline
+            pred_df = pd.read_csv(ablation_preds_csv)
+            pred_df['month'] = pd.to_datetime(pred_df['month'])
+            
+            melted_df = pred_df.melt(id_vars=['month'], var_name='Model', value_name='Forecast')
+            
+            fig_abla = px.line(melted_df, x='month', y='Forecast', color='Model', 
+                               title="Ablation Timeline: Real-world Tracking With vs Without Sentiment",
+                               markers=True)
+                               
+            fig_abla.update_traces(selector=dict(name='Actuals'), line=dict(color='black', width=3))
+            fig_abla.update_traces(selector=dict(name='With Sentiment'), line=dict(color='green', width=3, dash='solid'), marker=dict(size=10, symbol='star'))
+            fig_abla.update_traces(selector=dict(name='Without Sentiment'), line=dict(color='red', width=2, dash='dash'))
+            
+            st.plotly_chart(fig_abla, use_container_width=True)
+            
+        else:
+            st.warning("Ablation study files not found. Run step27_ablation_sentiment.py.")
             
     with tab1:
         st.markdown("**Transformer (Pure):** Standalone attention mechanism dynamically finding complex non-linear patterns with no recurrence.")
