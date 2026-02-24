@@ -454,9 +454,21 @@ elif mode == "4. 🧠 Models & Results":
             # Melt the dataframe for Plotly Express
             melted_df = pred_df.melt(id_vars=['month'], var_name='Model', value_name='Forecast')
             
+            # Append Historical Data to the plot from global_df
+            train_cut = global_df[global_df['month'] < pred_df['month'].min()].copy()
+            train_melted = pd.DataFrame({
+                'month': train_cut['month'],
+                'Model': 'Historical (Train)',
+                'Forecast': train_cut['review_count']
+            })
+            melted_df = pd.concat([train_melted, melted_df], ignore_index=True)
+            
             fig_base = px.line(melted_df, x='month', y='Forecast', color='Model', 
                                title="Performance Comparison: Traditional & ML Baselines vs Proposed Advanced Ensemble",
                                markers=True)
+            
+            # Style Historical Data
+            fig_base.update_traces(selector=dict(name='Historical (Train)'), line=dict(color='gray', width=1.5), opacity=0.5, marker=dict(size=1))
             
             # Make Actuals stand out
             fig_base.update_traces(selector=dict(name='Actuals'), line=dict(color='black', width=3))
@@ -465,7 +477,7 @@ elif mode == "4. 🧠 Models & Results":
             
             # Make others dashed
             for model in melted_df['Model'].unique():
-                if model not in ['Actuals', 'Proposed Advanced Ensemble']:
+                if model not in ['Actuals', 'Proposed Advanced Ensemble', 'Historical (Train)']:
                     fig_base.update_traces(selector=dict(name=model), line=dict(dash='dash', width=2))
                     
             fig_base.update_layout(xaxis_title="Month", yaxis_title="Review Count", legend_title="Model/Actuals")
