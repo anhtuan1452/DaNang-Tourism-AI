@@ -445,11 +445,38 @@ elif mode == "4. 🧠 Models & Results":
         metrics_csv = os.path.join(eda_path, 'baseline_comparison_metrics.csv')
         if os.path.exists(metrics_csv):
             st.dataframe(pd.read_csv(metrics_csv, index_col=0).style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
-        img = os.path.join(eda_path, 'step26_baseline_comparison.png')
-        if os.path.exists(img):
-            st.image(img, use_container_width=True)
+            
+        pred_csv = os.path.join(eda_path, 'baseline_predictions_timeline.csv')
+        if os.path.exists(pred_csv):
+            pred_df = pd.read_csv(pred_csv)
+            pred_df['month'] = pd.to_datetime(pred_df['month'])
+            
+            # Melt the dataframe for Plotly Express
+            melted_df = pred_df.melt(id_vars=['month'], var_name='Model', value_name='Forecast')
+            
+            fig_base = px.line(melted_df, x='month', y='Forecast', color='Model', 
+                               title="Performance Comparison: Traditional & ML Baselines vs Proposed Advanced Ensemble",
+                               markers=True)
+            
+            # Make Actuals stand out
+            fig_base.update_traces(selector=dict(name='Actuals'), line=dict(color='black', width=3))
+            # Make Proposed Advanced Ensemble stand out
+            fig_base.update_traces(selector=dict(name='Proposed Advanced Ensemble'), line=dict(color='red', width=3, dash='solid'), marker=dict(size=10, symbol='star'))
+            
+            # Make others dashed
+            for model in melted_df['Model'].unique():
+                if model not in ['Actuals', 'Proposed Advanced Ensemble']:
+                    fig_base.update_traces(selector=dict(name=model), line=dict(dash='dash', width=2))
+                    
+            fig_base.update_layout(xaxis_title="Month", yaxis_title="Review Count", legend_title="Model/Actuals")
+            st.plotly_chart(fig_base, use_container_width=True)
         else:
-            st.warning("Plot not yet generated. Run step26_compare_baselines.py.")
+            # Fallback to static image if CSV is missing
+            img = os.path.join(eda_path, 'step26_baseline_comparison.png')
+            if os.path.exists(img):
+                st.image(img, use_container_width=True)
+            else:
+                st.warning("Plot not yet generated. Run step26_compare_baselines.py.")
             
     with tab1:
         st.markdown("**Transformer (Pure):** Standalone attention mechanism dynamically finding complex non-linear patterns with no recurrence.")

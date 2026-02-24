@@ -155,9 +155,22 @@ def run_baselines(input_path, output_dir):
     metrics_df.to_csv(csv_path)
     print("\n--- COMPARISON METRICS ---")
     print(metrics_df)
-    print(f"\nSaved metrics to {csv_path}")
+    # --- Save Baseline Predictions for Streamlit Interactive Plot ---
+    # Convert predictions dictionary to DataFrame
+    # Need to match the length of y_test (test_df)
+    pred_df = test_df[['month', target_col]].copy()
+    pred_df = pred_df.rename(columns={target_col: 'Actuals'})
     
-    # --- Plotting ---
+    for model_name, preds in predictions.items():
+        if model_name != 'Actuals':
+            if len(preds) == len(pred_df):
+                pred_df[model_name] = preds
+                
+    pred_csv_path = os.path.join(output_dir, 'baseline_predictions_timeline.csv')
+    pred_df.to_csv(pred_csv_path, index=False)
+    print(f"Saved baseline predictions timeline to {pred_csv_path}")
+
+    # --- Plotting (Static Image Backup) ---
     test_dates = test_df['month'].values
     plt.figure(figsize=(16, 8))
     
