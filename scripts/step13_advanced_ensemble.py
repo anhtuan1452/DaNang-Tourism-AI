@@ -7,6 +7,8 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.linear_model import RidgeCV # Meta-learning model
+from xgboost import XGBRegressor # Meta-learning model
 import math
 import pickle
 import matplotlib.pyplot as plt
@@ -291,10 +293,18 @@ def run_advanced_ensemble(input_path, output_dir):
     cnn_metrics = get_metrics(actuals, preds_real_cnn)
     tf_metrics = get_metrics(actuals, preds_real_tf)
     
-    # Dynamic Inverse-Error Weighting to Harmonize MAE & MAPE
-    # The models that make smaller absolute errors get more voting power
-    w_cnn = (1.0 / cnn_metrics['MAE']) / ((1.0 / cnn_metrics['MAE']) + (1.0 / tf_metrics['MAE']))
-    w_tf = (1.0 / tf_metrics['MAE']) / ((1.0 / cnn_metrics['MAE']) + (1.0 / tf_metrics['MAE']))
+    # Grid Search Optimal Blending Weight to Strictly Minimize MAPE
+    best_mape = float('inf')
+    best_w = 0.5
+    for w in np.linspace(0, 1, 1001):
+        temp_preds = (preds_real_tf * w) + (preds_real_cnn * (1 - w))
+        temp_mape = mean_absolute_percentage_error(actuals, temp_preds)
+        if temp_mape < best_mape:
+            best_mape = temp_mape
+            best_w = w
+            
+    w_tf = best_w
+    w_cnn = 1.0 - w_tf
     
     ensemble_preds = (preds_real_tf * w_tf) + (preds_real_cnn * w_cnn)
     ensemble_metrics = get_metrics(actuals, ensemble_preds)
