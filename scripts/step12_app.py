@@ -420,7 +420,7 @@ elif mode == "4. 🧠 Models & Results":
     
     # --- Architecture Visualizations (moved from page 1) ---
     st.subheader("📈 Forecast Visualizations by Architecture")
-    tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Advanced Ensemble", "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"])
+    tab0, tab_base, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Advanced Ensemble", "Baseline Comparison", "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"])
     eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
     
     with tab0:
@@ -439,6 +439,18 @@ elif mode == "4. 🧠 Models & Results":
             st.plotly_chart(fig_ens, use_container_width=True)
         else:
             st.info("Run `step13_advanced_ensemble.py` to generate the predictions CSV.")
+            
+    with tab_base:
+        st.markdown("**TRADITIONAL & ML BASELINES:** Compares the Proposed Advanced Ensemble against standard models (ARIMA, Prophet, Random Forest, SVR, Seasonal Naive).")
+        metrics_csv = os.path.join(eda_path, 'baseline_comparison_metrics.csv')
+        if os.path.exists(metrics_csv):
+            st.dataframe(pd.read_csv(metrics_csv, index_col=0).style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
+        img = os.path.join(eda_path, 'step26_baseline_comparison.png')
+        if os.path.exists(img):
+            st.image(img, use_container_width=True)
+        else:
+            st.warning("Plot not yet generated. Run step26_compare_baselines.py.")
+            
     with tab1:
         st.markdown("**Transformer (Pure):** Standalone attention mechanism dynamically finding complex non-linear patterns with no recurrence.")
         test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
