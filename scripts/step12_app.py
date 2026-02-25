@@ -621,8 +621,8 @@ elif mode == "6. ⚙️ AI Pipeline & Source Code":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     if os.path.exists(script_dir):
-        # Scan and sort python step files
-        files = [f for f in os.listdir(script_dir) if f.startswith('step') and f.endswith('.py')]
+        # Only show requested files for source code viewer
+        files = [f for f in os.listdir(script_dir) if f in ['step13_advanced_ensemble.py', 'step26_compare_baselines.py']]
         
         # Sort files based on their step number (e.g. step10 comes after step2)
         def get_step_num(filename):
