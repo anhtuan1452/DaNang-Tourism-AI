@@ -551,7 +551,7 @@ elif mode == "4. 🧠 Models & Results":
             fig_ens.add_scatter(x=tp['month'], y=tp['ensemble_pred'], mode='lines+markers', name='Ensemble Forecast', line=dict(color='red', width=2.5), marker=dict(size=8, symbol='star'))
             fig_ens.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines', name='CNN-LSTM Only', line=dict(color='purple', dash='dot', width=1.5), opacity=0.7)
             fig_ens.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines', name='Transformer Only', line=dict(color='green', dash='dash', width=1.5), opacity=0.7)
-            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['mouth'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['month'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
             st.plotly_chart(fig_ens, use_container_width=True)
         else:
             st.info("Run `step13_advanced_ensemble.py` to generate the predictions CSV.")
