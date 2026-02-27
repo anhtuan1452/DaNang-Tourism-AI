@@ -420,13 +420,83 @@ elif mode == "4. 🧠 Models & Results":
     
     # --- Architecture Visualizations (moved from page 1) ---
     st.subheader("📈 Forecast Visualizations by Architecture")
-    tab0, tab_base, tab_ablation, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "Advanced Ensemble", "Baseline Comparison", "Ablation: Impact of Sentiment", 
+    tab_dl, tab0, tab_base, tab_ablation, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "🔬 Deep Learning Comparison", "Advanced Ensemble", "Baseline Comparison", "Ablation: Impact of Sentiment", 
         "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", 
         "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"
     ])
     eda_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'eda_outputs')
     
+    with tab_dl:
+        st.markdown("""
+        **Deep Learning Architecture Comparison** — Fair evaluation of all architectures on unified 80/20 train/test split.
+        Standalone models use MSE+Adam (LSTM/CNN/CNN-LSTM) or log1p+Huber+AdamW (Transformer).
+        TF + CNN-LSTM Ensemble result loaded directly from **Step 13 Advanced Ensemble** (optimal IEW weights).
+        """)
+        dl_metrics_csv = os.path.join(eda_path, 'deep_learning_comparison.csv')
+        dl_preds_csv   = os.path.join(eda_path, 'step28_predictions.csv')
+
+        if os.path.exists(dl_metrics_csv):
+            dl_df = pd.read_csv(dl_metrics_csv, index_col=0).sort_values('MAPE')
+            best_dl = dl_df.index[0]
+            st.success(f"Best model: **{best_dl}** (MAPE {dl_df.loc[best_dl,'MAPE']:.2f}%)")
+            st.dataframe(
+                dl_df.style.highlight_min(subset=['MAPE','MAE','RMSE'], color='lightgreen', axis=0)
+                           .highlight_max(subset=['DA(%)'], color='lightblue', axis=0),
+                use_container_width=True
+            )
+        else:
+            st.warning("Run `step28_deep_learning_comparison.py` to generate results.")
+
+        if os.path.exists(dl_preds_csv):
+            dp = pd.read_csv(dl_preds_csv)
+            dp['month'] = pd.to_datetime(dp['month'])
+            model_cols = [c for c in dp.columns if c not in ('month', 'actuals')]
+
+            COLOR_MAP = {
+                'LSTM':                '#FF9800',
+                'CNN':                 '#00BCD4',
+                'CNN-LSTM':            '#9C27B0',
+                'Transformer':         '#2196F3',
+                'TF + CNN (Ens)':      '#4CAF50',
+                'TF + LSTM (Ens)':     '#795548',
+                'TF + CNN-LSTM (Ens)': '#F44336',
+            }
+
+            fig_dl = go.Figure()
+            fig_dl.add_trace(go.Scatter(
+                x=dp['month'], y=dp['actuals'],
+                mode='lines+markers', name='Test Actuals',
+                line=dict(color='black', width=3), marker=dict(size=7)
+            ))
+            dash_cycle = ['dash','dot','dashdot','longdash','longdashdot','solid','dash']
+            for i, col in enumerate(model_cols):
+                if dp[col].notna().any():
+                    mape_val = ""
+                    if os.path.exists(dl_metrics_csv):
+                        try:
+                            mape_val = f" ({pd.read_csv(dl_metrics_csv, index_col=0).loc[col,'MAPE']:.1f}%)"
+                        except: pass
+                    fig_dl.add_trace(go.Scatter(
+                        x=dp['month'], y=dp[col],
+                        mode='lines+markers',
+                        name=f"{col}{mape_val}",
+                        line=dict(color=COLOR_MAP.get(col,'#607D8B'), dash=dash_cycle[i % len(dash_cycle)],
+                                  width=2.5 if 'Ens' in col else 1.8),
+                        marker=dict(size=6 if 'Ens' not in col else 8,
+                                    symbol='star' if col=='TF + CNN-LSTM (Ens)' else 'circle'),
+                        opacity=0.95
+                    ))
+            fig_dl.update_layout(
+                title='Deep Learning Forecast Comparison — Test Set Only',
+                xaxis_title='Month', yaxis_title='Tourist Review Count',
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, font=dict(size=10)),
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig_dl, use_container_width=True)
+        else:
+            st.info("Run `step28_deep_learning_comparison.py` to generate predictions.")
+
     with tab0:
         st.markdown("**Advanced Multi-Model Ensemble:** Fuses Transformer + CNN-LSTM (60/40 IEW) across the full 2017-2026 dataset.")
         test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
