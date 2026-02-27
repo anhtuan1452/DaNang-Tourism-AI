@@ -421,7 +421,7 @@ elif mode == "4. 🧠 Models & Results":
     # --- Architecture Visualizations (moved from page 1) ---
     st.subheader("📈 Forecast Visualizations by Architecture")
     tab_dl, tab0, tab_base, tab_ablation, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "🔬 Deep Learning Comparison", "Advanced Ensemble", "Baseline Comparison", "Ablation: Impact of Sentiment", 
+        "🔬 Deep Learning Comparison", "Baseline Comparison", "Advanced Ensemble", "Ablation: Impact of Sentiment", 
         "Transformer (Pure)", "Joint LSTM-Transformer", "Prediction Uncertainty (MC Dropout)", 
         "STL-LSTM Hybrid", "CNN-LSTM Hybrid", "BiLSTM-Attention", "Mixed STL-LSTM"
     ])
@@ -497,6 +497,48 @@ elif mode == "4. 🧠 Models & Results":
         else:
             st.info("Run `step28_deep_learning_comparison.py` to generate predictions.")
 
+    with tab_base:
+        st.markdown("**TRADITIONAL & ML BASELINES:** Compares Our approach against standard models (ARIMA, Prophet, Random Forest, SVR, Seasonal Naive).")
+        metrics_csv = os.path.join(eda_path, 'baseline_comparison_metrics.csv')
+        if os.path.exists(metrics_csv):
+            st.dataframe(pd.read_csv(metrics_csv, index_col=0).style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
+            
+        pred_csv = os.path.join(eda_path, 'baseline_predictions_timeline.csv')
+        if os.path.exists(pred_csv):
+            pred_df = pd.read_csv(pred_csv)
+            pred_df['month'] = pd.to_datetime(pred_df['month'])
+            
+            # Rename "Proposed Advanced Ensemble" to "Our approach"
+            if 'Proposed Advanced Ensemble' in pred_df.columns:
+                pred_df.rename(columns={'Proposed Advanced Ensemble': 'Our approach'}, inplace=True)
+            
+            # Melt the dataframe for Plotly Express
+            melted_df = pred_df.melt(id_vars=['month'], var_name='Model', value_name='Forecast')
+            
+            fig_base = px.line(melted_df, x='month', y='Forecast', color='Model', 
+                               title="Performance Comparison: Traditional & ML Baselines vs Our approach",
+                               markers=True)
+            
+            # Make Actuals stand out
+            fig_base.update_traces(selector=dict(name='Actuals'), line=dict(color='black', width=3))
+            # Make Our approach stand out
+            fig_base.update_traces(selector=dict(name='Our approach'), line=dict(color='red', width=3, dash='solid'), marker=dict(size=10, symbol='star'))
+            
+            # Make others dashed
+            for model in melted_df['Model'].unique():
+                if model not in ['Actuals', 'Our approach']:
+                    fig_base.update_traces(selector=dict(name=model), line=dict(dash='dash', width=2))
+                    
+            fig_base.update_layout(xaxis_title="Month", yaxis_title="Review Count", legend_title="Model/Actuals")
+            st.plotly_chart(fig_base, use_container_width=True)
+        else:
+            # Fallback to static image if CSV is missing
+            img = os.path.join(eda_path, 'step26_baseline_comparison.png')
+            if os.path.exists(img):
+                st.image(img, use_container_width=True)
+            else:
+                st.warning("Plot not yet generated. Run step26_compare_baselines.py.")
+            
     with tab0:
         st.markdown("**Advanced Multi-Model Ensemble:** Fuses Transformer + CNN-LSTM (60/40 IEW) across the full 2017-2026 dataset.")
         test_pred_csv = os.path.join(eda_path, 'ensemble_test_predictions.csv')
@@ -509,60 +551,10 @@ elif mode == "4. 🧠 Models & Results":
             fig_ens.add_scatter(x=tp['month'], y=tp['ensemble_pred'], mode='lines+markers', name='Ensemble Forecast', line=dict(color='red', width=2.5), marker=dict(size=8, symbol='star'))
             fig_ens.add_scatter(x=tp['month'], y=tp['cnn_pred'], mode='lines', name='CNN-LSTM Only', line=dict(color='purple', dash='dot', width=1.5), opacity=0.7)
             fig_ens.add_scatter(x=tp['month'], y=tp['transformer_pred'], mode='lines', name='Transformer Only', line=dict(color='green', dash='dash', width=1.5), opacity=0.7)
-            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['month'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            fig_ens.update_layout(xaxis_range=['2022-01-01', tp['mouth'].max().strftime('%Y-%m-%d')], legend=dict(orientation='h', yanchor='bottom', y=1.02))
             st.plotly_chart(fig_ens, use_container_width=True)
         else:
             st.info("Run `step13_advanced_ensemble.py` to generate the predictions CSV.")
-            
-    with tab_base:
-        st.markdown("**TRADITIONAL & ML BASELINES:** Compares the Proposed Advanced Ensemble against standard models (ARIMA, Prophet, Random Forest, SVR, Seasonal Naive).")
-        metrics_csv = os.path.join(eda_path, 'baseline_comparison_metrics.csv')
-        if os.path.exists(metrics_csv):
-            st.dataframe(pd.read_csv(metrics_csv, index_col=0).style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
-            
-        pred_csv = os.path.join(eda_path, 'baseline_predictions_timeline.csv')
-        if os.path.exists(pred_csv):
-            pred_df = pd.read_csv(pred_csv)
-            pred_df['month'] = pd.to_datetime(pred_df['month'])
-            
-            # Melt the dataframe for Plotly Express
-            melted_df = pred_df.melt(id_vars=['month'], var_name='Model', value_name='Forecast')
-            
-            # Append Historical Data to the plot from global_df
-            train_cut = global_df[global_df['month'] < pred_df['month'].min()].copy()
-            train_melted = pd.DataFrame({
-                'month': train_cut['month'],
-                'Model': 'Historical (Train)',
-                'Forecast': train_cut['review_count']
-            })
-            melted_df = pd.concat([train_melted, melted_df], ignore_index=True)
-            
-            fig_base = px.line(melted_df, x='month', y='Forecast', color='Model', 
-                               title="Performance Comparison: Traditional & ML Baselines vs Proposed Advanced Ensemble",
-                               markers=True)
-            
-            # Style Historical Data
-            fig_base.update_traces(selector=dict(name='Historical (Train)'), line=dict(color='gray', width=1.5), opacity=0.5, marker=dict(size=1))
-            
-            # Make Actuals stand out
-            fig_base.update_traces(selector=dict(name='Actuals'), line=dict(color='black', width=3))
-            # Make Proposed Advanced Ensemble stand out
-            fig_base.update_traces(selector=dict(name='Proposed Advanced Ensemble'), line=dict(color='red', width=3, dash='solid'), marker=dict(size=10, symbol='star'))
-            
-            # Make others dashed
-            for model in melted_df['Model'].unique():
-                if model not in ['Actuals', 'Proposed Advanced Ensemble', 'Historical (Train)']:
-                    fig_base.update_traces(selector=dict(name=model), line=dict(dash='dash', width=2))
-                    
-            fig_base.update_layout(xaxis_title="Month", yaxis_title="Review Count", legend_title="Model/Actuals")
-            st.plotly_chart(fig_base, use_container_width=True)
-        else:
-            # Fallback to static image if CSV is missing
-            img = os.path.join(eda_path, 'step26_baseline_comparison.png')
-            if os.path.exists(img):
-                st.image(img, use_container_width=True)
-            else:
-                st.warning("Plot not yet generated. Run step26_compare_baselines.py.")
                 
     with tab_ablation:
         st.markdown("**SENTIMENT ABLATION STUDY:** Measures the exact impact of extracting semantic sentiment from unstructured reviews on the final Advanced Ensemble.")
