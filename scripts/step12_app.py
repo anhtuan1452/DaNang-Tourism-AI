@@ -498,41 +498,90 @@ elif mode == "4. 🧠 Models & Results":
             st.info("Run `step28_deep_learning_comparison.py` to generate predictions.")
 
     with tab_base:
-        st.markdown("**TRADITIONAL & ML BASELINES:** Compares Our approach against standard models (ARIMA, Prophet, Random Forest, SVR, Seasonal Naive).")
+        st.markdown("""
+        **FULL MODEL COMPARISON** — Combines traditional baselines, standalone deep learning models, and Our proposed approach on a unified test set (80/20 split).
+        - **Baselines (dashed):** Seasonal Naïve, ARIMA, Prophet, Random Forest, SVR
+        - **DL Standalone (dash-dot):** CNN-LSTM, Transformer
+        - **Our approach (solid red ★):** TF + CNN-LSTM Advanced Ensemble
+        """)
+
+        # ── Load metrics ──────────────────────────────────────────────────────
         metrics_csv = os.path.join(eda_path, 'baseline_comparison_metrics.csv')
         if os.path.exists(metrics_csv):
-            st.dataframe(pd.read_csv(metrics_csv, index_col=0).style.highlight_min(subset=['MAPE', 'MAE'], color='lightgreen', axis=0), use_container_width=True)
-            
-        pred_csv = os.path.join(eda_path, 'baseline_predictions_timeline.csv')
+            m_df = pd.read_csv(metrics_csv, index_col=0)
+            st.dataframe(
+                m_df.style.highlight_min(subset=[c for c in ['MAPE','MAE','RMSE'] if c in m_df.columns],
+                                         color='lightgreen', axis=0),
+                use_container_width=True
+            )
+
+        # ── Load & merge prediction CSVs ──────────────────────────────────────
+        pred_csv   = os.path.join(eda_path, 'baseline_predictions_timeline.csv')
+        step28_csv = os.path.join(eda_path, 'step28_predictions.csv')
+
         if os.path.exists(pred_csv):
             pred_df = pd.read_csv(pred_csv)
             pred_df['month'] = pd.to_datetime(pred_df['month'])
-            
-            # Rename "Proposed Advanced Ensemble" to "Our approach"
             if 'Proposed Advanced Ensemble' in pred_df.columns:
                 pred_df.rename(columns={'Proposed Advanced Ensemble': 'Our approach'}, inplace=True)
-            
-            # Melt the dataframe for Plotly Express
-            melted_df = pred_df.melt(id_vars=['month'], var_name='Model', value_name='Forecast')
-            
-            fig_base = px.line(melted_df, x='month', y='Forecast', color='Model', 
-                               title="Performance Comparison: Traditional & ML Baselines vs Our approach",
-                               markers=True)
-            
-            # Make Actuals stand out
-            fig_base.update_traces(selector=dict(name='Actuals'), line=dict(color='black', width=3))
-            # Make Our approach stand out
-            fig_base.update_traces(selector=dict(name='Our approach'), line=dict(color='red', width=3, dash='solid'), marker=dict(size=10, symbol='star'))
-            
-            # Make others dashed
-            for model in melted_df['Model'].unique():
-                if model not in ['Actuals', 'Our approach']:
-                    fig_base.update_traces(selector=dict(name=model), line=dict(dash='dash', width=2))
-                    
-            fig_base.update_layout(xaxis_title="Month", yaxis_title="Review Count", legend_title="Model/Actuals")
+
+            # Merge CNN-LSTM & Transformer from step28
+            if os.path.exists(step28_csv):
+                s28 = pd.read_csv(step28_csv)[['month', 'CNN-LSTM', 'Transformer']]
+                s28['month'] = pd.to_datetime(s28['month'])
+                pred_df = pred_df.merge(s28, on='month', how='inner')
+
+            # ── Color & style config ────────────────────────────────────────
+            COLOR_MAP = {
+                'Actuals':        ('black',   'solid',     4,  'circle'),
+                'Seasonal Naïve': ('#9E9E9E', 'dash',      1.5,'circle'),
+                'Seasonal Naive': ('#9E9E9E', 'dash',      1.5,'circle'),
+                'ARIMA':          ('#FF9800', 'dash',      1.5,'square'),
+                'Prophet':        ('#4CAF50', 'dash',      1.5,'triangle-up'),
+                'Random Forest':  ('#9C27B0', 'dash',      1.5,'diamond'),
+                'SVR':            ('#795548', 'dash',      1.5,'triangle-down'),
+                'CNN-LSTM':       ('#00BCD4', 'dashdot',   2,  'pentagon'),
+                'Transformer':    ('#2196F3', 'dashdot',   2,  'cross'),
+                'Our approach':   ('#F44336', 'solid',     3.5,'star'),
+            }
+
+            # Ordered model display
+            DISPLAY_ORDER = [
+                'Actuals',
+                'Seasonal Naive', 'ARIMA', 'Prophet', 'Random Forest', 'SVR',
+                'CNN-LSTM', 'Transformer',
+                'Our approach',
+            ]
+
+            fig_base = go.Figure()
+            for col in DISPLAY_ORDER:
+                if col not in pred_df.columns:
+                    continue
+                clr, dsh, wid, sym = COLOR_MAP.get(col, ('#607D8B','dash',1.5,'circle'))
+                is_our = (col == 'Our approach')
+                fig_base.add_trace(go.Scatter(
+                    x=pred_df['month'],
+                    y=pred_df[col],
+                    mode='lines+markers',
+                    name=col,
+                    line=dict(color=clr, dash=dsh, width=wid),
+                    marker=dict(size=(10 if is_our else 5), symbol=sym),
+                    opacity=(1.0 if col in ('Actuals','Our approach') else 0.75),
+                    zorder=(10 if is_our else (8 if col=='Actuals' else 4)),
+                ))
+
+            fig_base.update_layout(
+                title="Fig. 2. Forecasting trajectories of the proposed method and baselines",
+                xaxis_title="Month",
+                yaxis_title="Review Count",
+                legend_title="Model/Actuals",
+                legend=dict(orientation='v', x=1.01, y=1, font=dict(size=11)),
+                hovermode='x unified',
+                height=480,
+            )
             st.plotly_chart(fig_base, use_container_width=True)
+
         else:
-            # Fallback to static image if CSV is missing
             img = os.path.join(eda_path, 'step26_baseline_comparison.png')
             if os.path.exists(img):
                 st.image(img, use_container_width=True)
