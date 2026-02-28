@@ -567,7 +567,6 @@ elif mode == "4. 🧠 Models & Results":
                     line=dict(color=clr, dash=dsh, width=wid),
                     marker=dict(size=(10 if is_our else 5), symbol=sym),
                     opacity=(1.0 if col in ('Actuals','Our approach') else 0.75),
-                    zorder=(10 if is_our else (8 if col=='Actuals' else 4)),
                 ))
 
             fig_base.update_layout(
